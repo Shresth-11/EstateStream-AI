@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Placeholder Realty - Voice Agent Voice Tester (Riya)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(23, 32, 54, 0.7);
+      --card-border: rgba(99, 102, 241, 0.2);
+      --primary: #6366f1;
+      --primary-glow: rgba(99, 102, 241, 0.4);
+      --accent: #10b981;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: radial-gradient(circle at top right, #1e1b4b, #090d16 70%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    .container {
+      width: 100%;
+      max-width: 800px;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid var(--primary);
+      color: #a5b4fc;
+      font-size: 0.8rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      margin-bottom: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ffffff, #a5b4fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      border-radius: 1.25rem;
+      padding: 1.75rem;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      margin-bottom: 1.5rem;
+    }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .agent-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+    .avatar {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #6366f1, #ec4899);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.1rem;
+      box-shadow: 0 0 15px var(--primary-glow);
+    }
+    .agent-info h3 { font-size: 1.1rem; }
+    .agent-info span { font-size: 0.85rem; color: var(--text-muted); }
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #64748b;
+    }
+    .dot.active {
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.7; }
+    }
+    .visualizer-box {
+      height: 50px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+      padding: 0 1rem;
+    }
+    .vis-bar {
+      width: 5px;
+      height: 6px;
+      background: var(--primary);
+      border-radius: 3px;
+      transition: height 0.08s ease;
+    }
+    .controls {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+    button {
+      font-family: inherit;
+      font-weight: 600;
+      padding: 0.85rem 1.75rem;
+      border-radius: 0.75rem;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+    }
+    .btn-call {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: white;
+      box-shadow: 0 4px 20px var(--primary-glow);
+    }
+    .btn-call:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(99, 102, 241, 0.6);
+    }
+    .btn-end {
+      background: var(--danger);
+      color: white;
+    }
+    .btn-end:hover:not(:disabled) {
+      background: #dc2626;
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .transcript-container {
+      max-height: 380px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 0.5rem;
+    }
+    .msg {
+      max-width: 80%;
+      padding: 0.85rem 1.15rem;
+      border-radius: 1rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .msg-agent {
+      align-self: flex-start;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #e0e7ff;
+      border-bottom-left-radius: 0.25rem;
+    }
+    .msg-user {
+      align-self: flex-end;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #d1fae5;
+      border-bottom-right-radius: 0.25rem;
+    }
+    .msg-speaker {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 0.25rem;
+      color: var(--text-muted);
+    }
+    .tool-pill {
+      align-self: center;
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fde68a;
+      font-size: 0.8rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .summary-card {
+      display: none;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid var(--accent);
+      border-radius: 1rem;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+    .summary-card h4 {
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+    .summary-card p {
+      white-space: pre-line;
+      color: #cbd5e1;
+      font-size: 0.9rem;
+    }
+    .dashboard-link {
+      display: inline-block;
+      margin-top: 1rem;
+      color: #818cf8;
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .dashboard-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">Voice Pipeline Tester</div>
+      <h1>Placeholder Realty Voice Agent</h1>
+      <p class="subtitle">Speak directly with Riya using your microphone to test qualification, function calling, and latency.</p>
+    </header>
+
+    <div class="card">
+      <div class="status-bar">
+        <div class="agent-meta">
+          <div class="avatar">R</div>
+          <div class="agent-info">
+            <h3>Riya</h3>
+            <span>Real Estate Qualification Specialist</span>
+          </div>
+        </div>
+        <div class="connection-status">
+          <span class="dot" id="statusDot"></span>
+          <span id="statusText">Disconnected</span>
+        </div>
+      </div>
+
+      <!-- Audio visualizer bars -->
+      <div class="visualizer-box" id="visBox">
+        <!-- 30 bars generated via JS -->
+      </div>
+
+      <!-- Action buttons -->
+      <div class="controls">
+        <button class="btn-call" id="btnStart" onclick="startCall()">
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.43-3.9-6.8-6.72l1.97-1.61c.29-.26.39-.65.26-1.03A11.75 11.75 0 018.77 4c0-.55-.45-1-1-1H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.44c0-.55-.45-1-.99-1z"/></svg>
+          Start Voice Call
+        </button>
+        <button class="btn-end" id="btnEnd" onclick="endCall()" disabled>
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.996.996 0 010-1.41C3.28 8.91 7.42 7.5 12 7.5s8.72 1.41 11.71 4.17c.39.39.39 1.02 0 1.41l-2.48 2.48c-.18.18-.43.29-.71.29s-.53-.11-.7-.28c-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
+          End Call
+        </button>
+      </div>
+    </div>
+
+    <!-- Transcript Stream -->
+    <div class="card">
+      <h3 style="margin-bottom: 1rem; font-size: 1.1rem; color: #cbd5e1;">Live Call Transcript</h3>
+      <div class="transcript-container" id="transcript">
+        <div style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 2rem 0;">
+          Click "Start Voice Call" to connect and begin speaking.
+        </div>
+      </div>
+
+      <!-- Post-call summary -->
+      <div class="summary-card" id="summaryCard">
+        <h4 id="summaryOutcome">Call Completed</h4>
+        <p id="summaryText"></p>
+        <a href="http://localhost:5173" target="_blank" class="dashboard-link">View captured lead in React Dashboard &rarr;</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const visBox = document.getElementById("visBox");
+    const numBars = 36;
+    for (let i = 0; i < numBars; i++) {
+      const bar = document.createElement("div");
+      bar.className = "vis-bar";
+      visBox.appendChild(bar);
+    }
+    const bars = document.querySelectorAll(".vis-bar");
+
+    let ws = null;
+    let audioCtx = null;
+    let mediaStream = null;
+    let speechRecognition = null;
+    let currentAudioSource = null;
+    let isSpeaking = false;
+
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const btnStart = document.getElementById("btnStart");
+    const btnEnd = document.getElementById("btnEnd");
+    const transcript = document.getElementById("transcript");
+    const summaryCard = document.getElementById("summaryCard");
+    const summaryOutcome = document.getElementById("summaryOutcome");
+    const summaryText = document.getElementById("summaryText");
+
+    function updateVisualizer(volume) {
+      bars.forEach((bar, index) => {
+        const factor = Math.sin((index / numBars) * Math.PI);
+        const h = Math.max(6, Math.min(46, volume * 50 * factor + (Math.random() * 8)));
+        bar.style.height = `${h}px`;
+      });
+    }
+
+    function resetVisualizer() {
+      bars.forEach(b => b.style.height = "6px");
+    }
+
+    async function startCall() {
+      try {
+        btnStart.disabled = true;
+        summaryCard.style.display = "none";
+        transcript.innerHTML = "";
+
+        // Request mic access
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(mediaStream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const checkAudio = () => {
+          if (!mediaStream) return;
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+          const avg = sum / dataArray.length / 255;
+          if (avg > 0.05) updateVisualizer(avg);
+          else if (!isSpeaking) resetVisualizer();
+          requestAnimationFrame(checkAudio);
+        };
+        checkAudio();
+
+        // Connect WebSocket
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}/ws/browser-audio`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          statusDot.className = "dot active";
+          statusText.textContent = "Call Connected";
+          btnEnd.disabled = false;
+          initSpeechRecognition();
+        };
+
+        ws.onmessage = async (event) => {
+          const data = jsonParse(event.data);
+          if (!data) return;
+
+          if (data.type === "agent_speech") {
+            appendMessage("Riya", data.text, "msg-agent");
+
+            if (data.tools_called && data.tools_called.length > 0) {
+              data.tools_called.forEach(tc => {
+                appendToolPill(tc);
+              });
+            }
+
+            if (data.audio) {
+              playAgentAudio(data.audio);
+            } else {
+              // Local Web Speech fallback if ElevenLabs key is not populated
+              speakLocally(data.text);
+            }
+
+            if (data.call_ended) {
+              setTimeout(() => endCall(), 4000);
+            }
+          } else if (data.type === "call_summary") {
+            summaryOutcome.textContent = `Call Outcome: ${data.outcome.toUpperCase()} (${data.duration_seconds}s)`;
+            summaryText.textContent = data.summary || "Conversation recorded.";
+            summaryCard.style.display = "block";
+          }
+        };
+
+        ws.onclose = () => {
+          cleanupCall();
+        };
+
+      } catch (err) {
+        console.error("Call error:", err);
+        alert("Failed to start voice call. Please check microphone permissions.");
+        btnStart.disabled = false;
+      }
+    }
+
+    function initSpeechRecognition() {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        console.warn("Web Speech API not supported. Falling back to direct prompt.");
+        return;
+      }
+
+      speechRecognition = new SpeechRec();
+      speechRecognition.continuous = true;
+      speechRecognition.interimResults = false;
+      speechRecognition.lang = 'en-US';
+
+      speechRecognition.onresult = (event) => {
+        const last = event.results.length - 1;
+        const text = event.results[last][0].transcript.trim();
+        if (text) {
+          // Barge-in: If user speaks while agent is talking, cancel agent audio
+          handleUserBargeIn();
+
+          appendMessage("You", text, "msg-user");
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "user_speech", text: text }));
+          }
+        }
+      };
+
+      speechRecognition.onerror = (e) => {
+        if (e.error !== "no-speech") console.error("Speech Recognition error:", e);
+      };
+
+      speechRecognition.onend = () => {
+        if (btnEnd.disabled === false && speechRecognition) {
+          try { speechRecognition.start(); } catch(e){}
+        }
+      };
+
+      speechRecognition.start();
+    }
+
+    function handleUserBargeIn() {
+      if (currentAudioSource) {
+        try { currentAudioSource.stop(); } catch(e){}
+        currentAudioSource = null;
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      isSpeaking = false;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "interruption" }));
+      }
+    }
+
+    function playAgentAudio(base64Audio) {
+      try {
+        isSpeaking = true;
+        const binary = atob(base64Audio);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+
+        audioCtx.decodeAudioData(bytes.buffer, (buffer) => {
+          if (currentAudioSource) {
+            try { currentAudioSource.stop(); } catch(e){}
+          }
+          currentAudioSource = audioCtx.createBufferSource();
+          currentAudioSource.buffer = buffer;
+          currentAudioSource.connect(audioCtx.destination);
+          currentAudioSource.onended = () => { isSpeaking = false; resetVisualizer(); };
+          currentAudioSource.start(0);
+        });
+      } catch (e) {
+        console.error("Audio playback error:", e);
+        isSpeaking = false;
+      }
+    }
+
+    function speakLocally(text) {
+      if ('speechSynthesis' in window) {
+        isSpeaking = true;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.05;
+        utterance.pitch = 1.1;
+        utterance.onend = () => { isSpeaking = false; resetVisualizer(); };
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    function endCall() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "end_call" }));
+        setTimeout(() => ws.close(), 500);
+      }
+      cleanupCall();
+    }
+
+    function cleanupCall() {
+      statusDot.className = "dot";
+      statusText.textContent = "Disconnected";
+      btnStart.disabled = false;
+      btnEnd.disabled = true;
+      resetVisualizer();
+
+      if (speechRecognition) {
+        try { speechRecognition.stop(); } catch(e){}
+        speechRecognition = null;
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+      }
+      if (currentAudioSource) {
+        try { currentAudioSource.stop(); } catch(e){}
+        currentAudioSource = null;
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    }
+
+    function appendMessage(speaker, text, className) {
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `msg ${className}`;
+      msgDiv.innerHTML = `<div class="msg-speaker">${speaker}</div><div>${escapeHtml(text)}</div>`;
+      transcript.appendChild(msgDiv);
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function appendToolPill(tool) {
+      const pill = document.createElement("div");
+      pill.className = "tool-pill";
+      let details = "";
+      if (tool.name === "search_properties") {
+        const count = Array.isArray(tool.result) ? tool.result.length : 0;
+        details = `Searched listings &rarr; ${count} matched`;
+      } else if (tool.name === "save_lead") {
+        details = `Lead captured &rarr; #${tool.result.lead_id || 'saved'}`;
+      } else if (tool.name === "escalate_to_human") {
+        details = `Escalated to human broker`;
+      }
+      pill.innerHTML = `<span>🔧</span> <strong>${tool.name}</strong>: ${details}`;
+      transcript.appendChild(pill);
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function jsonParse(str) {
+      try { return JSON.parse(str); } catch(e) { return null; }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.innerText = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
