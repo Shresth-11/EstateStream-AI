@@ -19,8 +19,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Placeholder Realty - Voice AI Qualification Agent",
-    description="Backend API and Voice Pipeline for Riya, Real Estate Lead Qualification Agent",
+    title="EstateStream AI — Real-Time Voice AI Agent for Real-Estate Sales",
+    description="Backend API and Voice Pipeline for Riya, Real-Time Voice AI Agent for Real-Estate Sales",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -72,7 +72,8 @@ async def health_check():
     return {
         "status": "healthy",
         "agent": "Riya",
-        "brokerage": "Placeholder Realty",
+        "project": "EstateStream AI",
+        "title": "Real-Time Voice AI Agent for Real-Estate Sales",
         "environment": settings.ENVIRONMENT,
     }
 
@@ -80,7 +81,7 @@ async def health_check():
 @app.get("/")
 async def root():
     return {
-        "message": "Welcome to Placeholder Realty Voice AI Agent API",
+        "message": "Welcome to EstateStream AI Voice Agent API",
         "docs": "/docs",
         "voice_test_client": "/voice-test",
         "health": "/health",

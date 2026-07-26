@@ -37,7 +37,7 @@ class AgentSession:
 
     async def get_initial_greeting(self) -> str:
         """Returns opening greeting from Riya."""
-        greeting = "Hi there! This is Riya with Placeholder Realty. What kind of property are you looking for today?"
+        greeting = "Hi there! This is Riya with EstateStream AI. What kind of property are you looking for today?"
         self.messages.append({"role": "assistant", "content": greeting})
         return greeting
 
@@ -56,7 +56,7 @@ class AgentSession:
         """
         if self.call_ended:
             return {
-                "reply": "Thank you for reaching out to Placeholder Realty. Have a wonderful day!",
+                "reply": "Thank you for reaching out to EstateStream AI. Have a wonderful day!",
                 "tools_called": [],
                 "call_ended": True,
                 "escalated": self.escalated,
@@ -67,7 +67,7 @@ class AgentSession:
             self.silence_count += 1
             if self.silence_count >= 2:
                 self.call_ended = True
-                farewell = "It seems we might have lost connection. Thank you for calling Placeholder Realty. Goodbye!"
+                farewell = "It seems we might have lost connection. Thank you for calling EstateStream AI. Goodbye!"
                 self.messages.append({"role": "assistant", "content": farewell})
                 return {
                     "reply": farewell,

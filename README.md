@@ -1,6 +1,7 @@
-# 🏡 Real Estate Lead Qualification Voice Agent ("Riya" - Placeholder Realty)
+# 🏡 EstateStream AI — Real-Time Voice AI Agent for Real-Estate Sales
+> **Tech Stack:** Python, FastAPI, Pipecat AI, OpenAI GPT-4o, Deepgram Nova-2, ElevenLabs, Twilio, PostgreSQL, Docker
 
-An end-to-end, production-grade Voice AI Agent portfolio project built for a fictional real estate brokerage called **Placeholder Realty**. The agent (**Riya**) receives inbound phone calls via **Twilio Media Streams** or local microphone sessions via a **Browser WebRTC/WebSocket client**, conducts a conversational buyer qualification dialogue, looks up matching inventory from **PostgreSQL**, captures structured lead details, and persists full turn-by-turn transcripts and summaries to a **React + Vite + Tailwind dashboard**.
+An end-to-end, production-grade Voice AI Agent portfolio project (**EstateStream AI**). The agent (**Riya**) receives inbound phone calls via **Twilio Media Streams** or local microphone sessions via a **Browser WebRTC/WebSocket client**, conducts a conversational buyer qualification dialogue, looks up matching inventory from **PostgreSQL**, captures structured lead details, and persists full turn-by-turn transcripts and summaries to a **React + Vite + Tailwind dashboard**.
 
 ---
 
@@ -204,7 +205,7 @@ The application will boot on `http://localhost:8000`.
 ### 1. Browser Microphone Flow (Zero External Setup)
 1. Open the React Dashboard at `http://localhost:5173` and click **"Live Mic Tester"** in the top right (or visit `http://localhost:8000/voice-test`).
 2. Click **"Start Voice Call"** and grant microphone permissions.
-3. Riya will greet you: *"Hi there! This is Riya with Placeholder Realty. What kind of property are you looking for today?"*
+3. Riya will greet you: *"Hi there! This is Riya with EstateStream AI. What kind of property are you looking for today?"*
 4. Speak naturally:
    - *"I'm looking for a 3 BHK in Downtown with a budget of $800,000."*
    - Watch the agent invoke `search_properties()`, locate a real listing from PostgreSQL, and describe it.

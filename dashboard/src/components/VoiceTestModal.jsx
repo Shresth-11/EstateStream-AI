@@ -225,7 +225,7 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
             </div>
             <div>
               <h3 className="font-extrabold text-[#191512] text-sm">Live Voice Qualification Call</h3>
-              <p className="text-xs text-[#78716c]">Speaking with Riya (Placeholder Realty)</p>
+              <p className="text-xs text-[#78716c]">Speaking with Riya (EstateStream AI)</p>
             </div>
           </div>
 

@@ -151,13 +151,13 @@ class MockLLMClient(BaseLLMClient):
         # Guardrail 2: Legal / Tax / Financing guarantees
         if any(w in msg_lower for w in ["guarantee", "tax exempt", "interest rate", "3%", "legal deed", "warranty", "lawsuit"]):
             return LLMResponse(
-                content="Placeholder Realty strictly ensures all transactions are compliant, but one of our licensed advisors can go through that with you directly. What area or budget were you thinking of for your home?"
+                content="EstateStream AI strictly ensures all transactions are compliant, but one of our licensed advisors can go through that with you directly. What area or budget were you thinking of for your home?"
             )
 
         # Guardrail 3: Off-topic inquiries (weather, sports, politics, recipe)
         if any(w in msg_lower for w in ["weather", "who won", "score", "recipe", "election", "president", "movie"]):
             return LLMResponse(
-                content="Haha, that's outside my domain! I'm focused on finding your dream home at Placeholder Realty. What location or property style are you searching for?"
+                content="Haha, that's outside my domain! I'm focused on finding your dream home at EstateStream AI. What location or property style are you searching for?"
             )
 
         # Guardrail 4: Impatient caller ("cut the fluff", "hurry up", "quick")
@@ -254,7 +254,7 @@ class MockLLMClient(BaseLLMClient):
         # Standard conversational opening / fallback
         if not messages or len(messages) <= 2:
             return LLMResponse(
-                content="Hello! This is Riya with Placeholder Realty. How can I help with your property search today?"
+                content="Hello! This is Riya with EstateStream AI. How can I help with your property search today?"
             )
 
         return LLMResponse(
