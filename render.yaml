@@ -3,7 +3,7 @@ services:
     name: real-estate-voice-agent
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
@@ -26,5 +26,5 @@ services:
 databases:
   - name: real-estate-db
     databaseName: real_estate_agent
-    user: postgres
+    user: estate_admin
     plan: free
