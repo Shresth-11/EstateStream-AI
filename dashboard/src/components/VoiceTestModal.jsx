@@ -56,8 +56,16 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
       updateVolume();
 
       // 2. WebSocket Connection
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/browser-audio`;
+      let wsUrl = '';
+      if (import.meta.env.VITE_WS_URL) {
+        wsUrl = `${import.meta.env.VITE_WS_URL}/ws/browser-audio`;
+      } else if (import.meta.env.VITE_API_URL) {
+        const cleanHost = import.meta.env.VITE_API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+        wsUrl = `${cleanHost}/ws/browser-audio`;
+      } else {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${protocol}//${window.location.host}/ws/browser-audio`;
+      }
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
