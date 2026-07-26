@@ -55,6 +55,43 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db():
-    """Initializes tables asynchronously (useful for rapid dev/testing)."""
+    """Initializes tables asynchronously and auto-seeds initial properties and demo leads."""
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Auto-seed if tables are empty (guarantees leads and inventory appear out-of-the-box)
+    from sqlalchemy import select, func
+    from backend.models import Property, Lead, Conversation
+    from backend.seed_data import SAMPLE_PROPERTIES, SAMPLE_LEADS
+
+    async with AsyncSessionLocal() as session:
+        try:
+            prop_count_res = await session.execute(select(func.count(Property.id)))
+            prop_count = prop_count_res.scalar() or 0
+            if prop_count == 0:
+                for p_data in SAMPLE_PROPERTIES:
+                    session.add(Property(**p_data))
+                await session.commit()
+
+            lead_count_res = await session.execute(select(func.count(Lead.id)))
+            lead_count = lead_count_res.scalar() or 0
+            if lead_count == 0:
+                for item in SAMPLE_LEADS:
+                    lead_data = item["lead"]
+                    conv_data = item["conversation"]
+                    lead_obj = Lead(**lead_data)
+                    session.add(lead_obj)
+                    await session.flush()
+
+                    conv_obj = Conversation(
+                        lead_id=lead_obj.id,
+                        duration_seconds=conv_data.get("duration_seconds", 60),
+                        outcome=conv_data.get("outcome", "qualified"),
+                        summary=conv_data.get("summary", ""),
+                        transcript=conv_data.get("transcript", []),
+                    )
+                    session.add(conv_obj)
+                await session.commit()
+        except Exception as e:
+            await session.rollback()
+            print(f"Warning: database auto-seed encountered: {e}")
