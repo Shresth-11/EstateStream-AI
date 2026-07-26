@@ -14,6 +14,25 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
   const currentAudioSourceRef = useRef(null);
   const transcriptEndRef = useRef(null);
 
+  const cleanup = () => {
+    if (speechRecRef.current) {
+      try { speechRecRef.current.stop(); } catch (e) {}
+      speechRecRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    if (currentAudioSourceRef.current) {
+      try { currentAudioSourceRef.current.stop(); } catch (e) {}
+      currentAudioSourceRef.current = null;
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setAudioVolume(0);
+  };
+
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -23,8 +42,6 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
       cleanup();
     };
   }, []);
-
-  if (!isOpen) return null;
 
   const startVoiceCall = async () => {
     try {
@@ -195,24 +212,7 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
     setInCall(false);
   };
 
-  const cleanup = () => {
-    if (speechRecRef.current) {
-      try { speechRecRef.current.stop(); } catch (e) {}
-      speechRecRef.current = null;
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      mediaStreamRef.current = null;
-    }
-    if (currentAudioSourceRef.current) {
-      try { currentAudioSourceRef.current.stop(); } catch (e) {}
-      currentAudioSourceRef.current = null;
-    }
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    setAudioVolume(0);
-  };
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#191512]/60 backdrop-blur-sm animate-fadeIn">
