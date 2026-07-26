@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, PhoneOff, Bot, User, Wrench, Sparkles, Volume2 } from 'lucide-react';
+import { X, Mic, PhoneOff, PhoneCall, Bot, User, Wrench, Sparkles } from 'lucide-react';
 
 export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
   const [inCall, setInCall] = useState(false);
-  const [status, setStatus] = useState('Disconnected');
+  const [status, setStatus] = useState('Ready to connect');
   const [messages, setMessages] = useState([]);
   const [audioVolume, setAudioVolume] = useState(0);
 
@@ -29,7 +29,7 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
   const startVoiceCall = async () => {
     try {
       setInCall(true);
-      setStatus('Requesting Microphone...');
+      setStatus('Connecting to Riya...');
       setMessages([]);
 
       // 1. Microphone capture & visualizer
@@ -70,7 +70,7 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setStatus('Connected with Riya');
+        setStatus('Call Active • Speaking with Riya');
         initSpeechRecognition();
       };
 
@@ -106,12 +106,12 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
       };
 
       ws.onclose = () => {
-        setStatus('Call Disconnected');
+        setStatus('Call Ended');
         setInCall(false);
       };
     } catch (err) {
       console.error(err);
-      setStatus('Mic permission denied / Error');
+      setStatus('Mic permission needed / Error');
       setInCall(false);
     }
   };
@@ -129,7 +129,6 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
       const last = event.results.length - 1;
       const text = event.results[last][0].transcript.trim();
       if (text) {
-        // Interruption handling: stop agent audio
         if (currentAudioSourceRef.current) {
           try { currentAudioSourceRef.current.stop(); } catch(e){}
         }
@@ -216,53 +215,72 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-2xl bg-[#0c1322] border border-indigo-500/30 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#191512]/60 backdrop-blur-sm animate-fadeIn">
+      <div className="relative w-full max-w-xl bg-[#ffffff] border border-[#ede5da] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/70">
+        <div className="px-6 py-4 border-b border-[#ede5da] flex items-center justify-between bg-[#fbf8f3]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-emerald-500 flex items-center justify-center text-white">
+            <div className="w-10 h-10 rounded-xl bg-[#d94336] flex items-center justify-center text-white shadow-sm">
               <Mic className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-base">Live Microphone Voice Session</h3>
-              <p className="text-xs text-slate-400">Persona: Riya (Placeholder Realty)</p>
+              <h3 className="font-extrabold text-[#191512] text-sm">Live Voice Qualification Call</h3>
+              <p className="text-xs text-[#78716c]">Speaking with Riya (Placeholder Realty)</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700">
-              <span className={`w-2 h-2 rounded-full ${inCall ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'}`}></span>
-              <span className="text-slate-300">{status}</span>
+          <div className="flex items-center gap-2.5">
+            <span className="flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-[#f4ede4] border border-[#e8dfd2]">
+              <span className={`w-2 h-2 rounded-full ${inCall ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'}`}></span>
+              <span className="text-[#191512]">{status}</span>
             </span>
             <button
               onClick={() => { endVoiceCall(); onClose(); }}
-              className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700"
+              className="p-1.5 text-[#78716c] hover:text-[#191512] rounded-xl bg-[#ffffff] border border-[#ede5da] hover:bg-[#f4ede4]"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Audio Visualizer Bar */}
-        <div className="px-6 py-3 bg-slate-950/40 border-b border-slate-800/80 flex items-center justify-center gap-1.5 h-12">
-          {Array.from({ length: 24 }).map((_, i) => {
-            const h = inCall ? Math.max(4, Math.min(32, audioVolume * 40 * Math.sin((i / 24) * Math.PI) + 4)) : 4;
-            return (
-              <div
-                key={i}
-                className="w-1.5 bg-indigo-500 rounded-full transition-all duration-75"
-                style={{ height: `${h}px` }}
-              />
-            );
-          })}
+        {/* Smartphone Call Simulator Banner */}
+        <div className="px-6 py-4 bg-[#fbf8f3] border-b border-[#ede5da] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-[#feece8] border border-[#fbd2ca] flex items-center justify-center text-[#d94336]">
+              <PhoneCall className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-extrabold text-[#191512]">EstateStream Voice AI</div>
+              <div className="text-[11px] text-[#78716c]">English • Nova-2 STT • ElevenLabs Voice</div>
+            </div>
+          </div>
+
+          {/* Audio Waveform Meter */}
+          <div className="flex items-center gap-1 h-6">
+            {Array.from({ length: 18 }).map((_, i) => {
+              const h = inCall ? Math.max(4, Math.min(22, audioVolume * 30 * Math.sin((i / 18) * Math.PI) + 4)) : 4;
+              return (
+                <div
+                  key={i}
+                  className="w-1 bg-[#d94336] rounded-full transition-all duration-75"
+                  style={{ height: `${h}px` }}
+                />
+              );
+            })}
+          </div>
         </div>
 
-        {/* Transcript Box */}
-        <div className="flex-1 p-6 overflow-y-auto max-h-[380px] space-y-3">
+        {/* Live Conversation Stream */}
+        <div className="flex-1 p-6 overflow-y-auto max-h-[340px] space-y-3 bg-[#ffffff]">
           {messages.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 text-sm">
-              Press "Start Voice Call" below to test the agent with your microphone.
+            <div className="text-center py-12 text-[#78716c] text-xs space-y-2">
+              <div className="w-12 h-12 rounded-full bg-[#f4ede4] flex items-center justify-center mx-auto text-[#d94336]">
+                <Mic className="w-5 h-5" />
+              </div>
+              <p className="font-bold text-[#191512] text-sm">Click "Start Voice Call" below to test</p>
+              <p className="max-w-xs mx-auto text-[#78716c]">
+                Speak naturally as a prospective home buyer. Example: <em>"I'm looking for a 3 BHK in Downtown under $800,000."</em>
+              </p>
             </div>
           ) : (
             messages.map((m, idx) => (
@@ -270,15 +288,15 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
                 <div
                   className={`p-3.5 rounded-2xl text-xs leading-relaxed max-w-[85%] ${
                     m.role === 'assistant'
-                      ? 'bg-indigo-950/40 border border-indigo-500/30 text-indigo-100 mr-auto'
-                      : 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-100 ml-auto'
+                      ? 'bg-[#fff5f3] border border-[#fbd2ca] text-[#191512] mr-auto'
+                      : 'bg-[#f4ede4] border border-[#e8dfd2] text-[#191512] ml-auto'
                   }`}
                 >
-                  <div className="font-bold mb-1 opacity-70 flex items-center gap-1">
-                    {m.role === 'assistant' ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+                  <div className="font-extrabold mb-1 flex items-center gap-1 text-[11px] text-[#78716c]">
+                    {m.role === 'assistant' ? <Bot className="w-3.5 h-3.5 text-[#d94336]" /> : <User className="w-3.5 h-3.5 text-[#6b635b]" />}
                     <span>{m.role === 'assistant' ? 'Riya' : 'You'}</span>
                   </div>
-                  <p>{m.text}</p>
+                  <p className="font-normal">{m.text}</p>
                 </div>
 
                 {m.tools && m.tools.length > 0 && (
@@ -286,9 +304,9 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
                     {m.tools.map((t, ti) => (
                       <span
                         key={ti}
-                        className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium flex items-center gap-1"
+                        className="px-2.5 py-0.5 rounded-full bg-[#fef3c7] border border-[#fde68a] text-[#92400e] text-[11px] font-bold flex items-center gap-1"
                       >
-                        <Wrench className="w-3 h-3" />
+                        <Wrench className="w-3 h-3 text-[#d97706]" />
                         <span>{t.name}: {Array.isArray(t.result) ? `${t.result.length} matches` : 'Executed'}</span>
                       </span>
                     ))}
@@ -301,19 +319,19 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
         </div>
 
         {/* Footer Controls */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/60 flex items-center justify-center gap-4">
+        <div className="p-4 border-t border-[#ede5da] bg-[#fbf8f3] flex items-center justify-center gap-4">
           {!inCall ? (
             <button
               onClick={startVoiceCall}
-              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-600/30 transition-all"
+              className="flex items-center gap-2 px-6 py-3 bg-[#d94336] hover:bg-[#c43529] text-white font-extrabold text-xs rounded-xl shadow-md shadow-[#d94336]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
-              <Mic className="w-4 h-4" />
+              <PhoneCall className="w-4 h-4" />
               <span>Start Voice Call</span>
             </button>
           ) : (
             <button
               onClick={endVoiceCall}
-              className="flex items-center gap-2 px-6 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-rose-600/30 transition-all"
+              className="flex items-center gap-2 px-6 py-3 bg-stone-900 hover:bg-black text-white font-extrabold text-xs rounded-xl shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               <PhoneOff className="w-4 h-4" />
               <span>End Call</span>

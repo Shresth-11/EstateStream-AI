@@ -38,7 +38,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#fbf8f3] text-[#191512] flex flex-col font-sans selection:bg-[#d94336] selection:text-white">
       {/* Top Navbar */}
       <Navbar
         activeTab={activeTab}
@@ -57,6 +57,7 @@ export default function App() {
             setFilterStatus={setFilterStatus}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            onOpenVoiceTester={() => setIsVoiceTesterOpen(true)}
           />
         )}
 
