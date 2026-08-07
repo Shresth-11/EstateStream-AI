@@ -44,7 +44,7 @@ export default function ConversationsView({ onSelectLead }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-extrabold text-[#191512] tracking-tight">Call Sessions & Turn Logs</h2>
-        <p className="text-xs text-[#6b635b] mt-0.5">Every call ingested via Twilio Media Streams or browser microphone</p>
+        <p className="text-xs text-[#6b635b] mt-0.5">Call records captured via browser microphone voice session</p>
       </div>
 
       {loading ? (

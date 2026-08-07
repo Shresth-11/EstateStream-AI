@@ -17,7 +17,7 @@ from voice.agent import AgentSession
 
 
 async def run_cli_session():
-    print("  EstateStream AI — Real-Time Voice AI Agent for Real-Estate Sales")
+    print("  EstateStream AI: Voice Agent Prototype for Real Estate")
     print("  Persona: Riya | Type 'exit' or 'quit' to conclude call.")
     print("=" * 65)
 

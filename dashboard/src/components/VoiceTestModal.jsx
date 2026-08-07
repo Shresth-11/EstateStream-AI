@@ -250,8 +250,8 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
               <PhoneCall className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-xs font-extrabold text-[#191512]">EstateStream Voice AI</div>
-              <div className="text-[11px] text-[#78716c]">English • Nova-2 STT • ElevenLabs Voice</div>
+              <div className="text-xs font-extrabold text-[#191512]">EstateStream Voice Prototype</div>
+              <div className="text-[11px] text-[#78716c]">English • Web Speech STT • ElevenLabs / Browser TTS</div>
             </div>
           </div>
 

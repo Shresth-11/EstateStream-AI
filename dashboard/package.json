@@ -1,5 +1,6 @@
 {
   "name": "estatestream-ai-dashboard",
+  "description": "Prototype voice agent for real estate lead qualification. FastAPI, OpenAI function calling, ElevenLabs TTS, React.",
   "private": true,
   "version": "1.0.0",
   "type": "module",

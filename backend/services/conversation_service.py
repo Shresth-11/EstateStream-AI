@@ -52,7 +52,7 @@ async def get_conversation_by_id(db: AsyncSession, conv_id: int) -> Optional[Con
 def generate_structured_summary_heuristic(transcript: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Generates structured summary and outcome assessment directly from transcript.
-    Used for instant real-time post-call persistence or as fallback if OpenAI key is not provided.
+    Used for instant post-call persistence or as fallback if OpenAI key is not provided.
     """
     if not transcript:
         return {

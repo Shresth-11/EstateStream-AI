@@ -17,7 +17,7 @@ from voice.audio_services import synthesize_speech_elevenlabs, transcribe_audio_
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Voice Telephony & WebRTC/WebSocket Audio"])
+router = APIRouter(tags=["Voice Telephony & Browser Audio"])
 
 
 # --- TWILIO TELEPHONY WEBHOOKS ---
@@ -66,8 +66,8 @@ async def twilio_status_callback(request: Request):
 @router.websocket("/ws/twilio")
 async def twilio_websocket_endpoint(websocket: WebSocket):
     """
-    Bidirectional WebSocket handling Twilio Media Streams audio packets.
-    Decodes μ-law 8kHz audio, interacts with agent, and transmits TTS back.
+    WebSocket endpoint for Twilio Media Streams (prototype stub).
+    Handles start event and sends initial greeting. Incoming caller audio packets are not processed.
     """
     await websocket.accept()
     stream_sid: Optional[str] = None
@@ -108,7 +108,7 @@ async def twilio_websocket_endpoint(websocket: WebSocket):
             elif event_type == "media":
                 # Raw audio payload (base64 encoded 8kHz μ-law)
                 payload_raw = data.get("media", {}).get("payload")
-                # Pipeline STT handles processing this stream
+                # Note: Incoming caller audio is not processed in this prototype
 
             elif event_type == "stop":
                 logger.info(f"Twilio Media Stream stopped for streamSid={stream_sid}")
@@ -140,13 +140,13 @@ async def twilio_websocket_endpoint(websocket: WebSocket):
             await db.commit()
 
 
-# --- LOCAL BROWSER WEBSOCKET AUDIO / WEBRTC ENDPOINT ---
+# --- LOCAL BROWSER WEBSOCKET AUDIO ENDPOINT ---
 
 @router.websocket("/ws/browser-audio")
 async def browser_audio_websocket(websocket: WebSocket):
     """
     WebSocket endpoint for local browser microphone testing.
-    Supports audio streaming, turn-by-turn speech events, tool execution,
+    Supports turn-by-turn speech events, tool execution,
     TTS audio streaming, interruption handling, and live transcript streaming.
     """
     await websocket.accept()

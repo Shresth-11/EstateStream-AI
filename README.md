@@ -1,7 +1,7 @@
-# 🏡 EstateStream AI — Real-Time Voice AI Agent for Real-Estate Sales
-> **Tech Stack:** Python, FastAPI, Pipecat AI, OpenAI GPT-4o, Deepgram Nova-2, ElevenLabs, Twilio, PostgreSQL, Docker
+# 🏡 EstateStream AI: Voice Agent Prototype for Real Estate
+> **Tech Stack:** Python, FastAPI, OpenAI GPT-4o, ElevenLabs, React, PostgreSQL, Docker
 
-An end-to-end, production-grade Voice AI Agent portfolio project (**EstateStream AI**). The agent (**Riya**) receives inbound phone calls via **Twilio Media Streams** or local microphone sessions via a **Browser WebRTC/WebSocket client**, conducts a conversational buyer qualification dialogue, looks up matching inventory from **PostgreSQL**, captures structured lead details, and persists full turn-by-turn transcripts and summaries to a **React + Vite + Tailwind dashboard**.
+A voice agent prototype for real estate lead qualification (**EstateStream AI**). The agent (**Riya**) conducts conversational buyer qualification through a browser microphone interface using the browser Web Speech API, searches verified listings from the database (22 seeded listings), uses OpenAI GPT-4o function calling (`search_properties`, `save_lead`, `escalate_to_human`), synthesizes voice responses using ElevenLabs REST (with browser speechSynthesis fallback), and persists turn transcripts to a React dashboard. Twilio telephony includes a working greeting webhook, while incoming caller audio processing is not implemented.
 
 ---
 
@@ -9,16 +9,15 @@ An end-to-end, production-grade Voice AI Agent portfolio project (**EstateStream
 
 ```mermaid
 flowchart TD
-    subgraph Inbound Audio Channels
-        Phone[Phone Caller via PSTN] -->|Twilio Media Streams μ-law| TwilioWS["FastAPI WebSocket (/ws/twilio)"]
-        Browser[Browser Microphone User] -->|WebRTC / Audio WebSocket| BrowserWS["FastAPI WebSocket (/ws/browser-audio)"]
+    subgraph Inbound Channels
+        Browser[Browser User Microphone] -->|Browser Web Speech STT| BrowserWS["FastAPI WebSocket (/ws/browser-audio)"]
+        Phone[Phone Caller via PSTN] -->|Twilio Incoming Call Webhook| TwilioHook["FastAPI Twilio Endpoint (/api/twilio/incoming-call)"]
     end
 
-    subgraph Pipecat Voice Pipeline
-        STT["Deepgram Nova-2 (Streaming STT)"]
-        VAD["Silero VAD (Interruption & Barge-in)"]
-        LLM["OpenAI GPT-4o (Native Tool Calling)"]
-        TTS["ElevenLabs Turbo v2.5 (Streaming TTS)"]
+    subgraph Voice & LLM Pipeline
+        BrowserWS -->|Text Turn| LLM["OpenAI GPT-4o (Function Calling)"]
+        LLM -->|Text Response| TTS["ElevenLabs REST / Browser SpeechSynthesis Fallback"]
+        TTS -->|Audio Playback| BrowserWS
     end
 
     subgraph Function Calling Tools
@@ -28,25 +27,19 @@ flowchart TD
     end
 
     subgraph Storage Layer
-        DB[(PostgreSQL / Alembic Migrations)]
-        PropsTable[properties table - 22+ Seeded Listings]
-        LeadsTable[leads table - Statuses & Criteria]
-        ConvsTable[conversations table - Turn Transcripts & Summaries]
+        DB[(PostgreSQL / SQLite Fallback)]
+        PropsTable[properties table: 22 Seeded Listings]
+        LeadsTable[leads table: Statuses & Criteria]
+        ConvsTable[conversations table: Turn Transcripts & Summaries]
     end
 
     subgraph Frontend
         Dashboard["React 18 + Vite + Tailwind CSS Dashboard"]
     end
 
-    TwilioWS --> STT
-    BrowserWS --> STT
-    STT --> VAD --> LLM
     LLM --> SearchTool --> PropsTable
     LLM --> LeadTool --> LeadsTable
     LLM --> EscalateTool
-    LLM --> TTS
-    TTS --> TwilioWS
-    TTS --> BrowserWS
 
     Dashboard -->|REST API| FastAPIApp[FastAPI REST Router]
     FastAPIApp --> LeadsTable
@@ -60,16 +53,16 @@ flowchart TD
 
 | Component | Technology | Description |
 |---|---|---|
-| **Backend & Orchestration** | Python 3.12 / FastAPI / Uvicorn | High-performance asynchronous API & WebSocket server |
-| **Voice Framework** | Pipecat 1.11.0 | Real-time voice frame orchestration and pipeline runner |
-| **Speech-to-Text (STT)** | Deepgram Nova-2 | Streaming transcription with low latency and smart formatting |
-| **Text-to-Speech (TTS)** | ElevenLabs Turbo v2.5 | High-fidelity conversational voice synthesis (Rachel / Riya) |
-| **LLM Engine** | OpenAI GPT-4o (Native Tools) | Abstracted behind `BaseLLMClient` (swappable for Claude) |
-| **Telephony** | Twilio Programmable Voice | WebSocket Media Streams with `TwilioFrameSerializer` |
-| **Local Testing Client** | HTML5 / Web Audio API | Live audio waveform visualizer and Web Speech / audio playback |
-| **Database & Migrations** | PostgreSQL, SQLAlchemy, Alembic | Async ORM with automatic local SQLite fallback |
+| **Backend & Orchestration** | Python 3.12 / FastAPI / Uvicorn | Asynchronous API & WebSocket server |
+| **Speech-to-Text (STT)** | Browser Web Speech API | Client-side speech recognition in the live flow (Deepgram REST helper exists in backend but is not used in the live browser flow) |
+| **Text-to-Speech (TTS)** | ElevenLabs REST | Conversational voice synthesis via ElevenLabs REST API with browser speechSynthesis fallback |
+| **LLM Engine** | OpenAI GPT-4o (Function Calling) | Abstracted behind `BaseLLMClient` with tools (`search_properties`, `save_lead`, `escalate_to_human`) and offline `MockLLMClient` fallback |
+| **Telephony** | Twilio Programmable Voice | TwiML greeting webhook (incoming caller audio processing is not implemented) |
+| **Voice Framework** | Pipecat (Planned / Not Implemented) | Standalone experimental pipeline file in repository, not wired into active server |
+| **Local Testing Client** | HTML5 / Web Audio API | Live audio waveform visualizer and browser voice session testing |
+| **Database & Migrations** | PostgreSQL, SQLAlchemy, Alembic | Async ORM with automatic local SQLite fallback and 22 seeded listings |
 | **Frontend Dashboard** | React 18, Vite, Tailwind CSS, Lucide | Filterable leads, turn transcripts, catalog, and embedded tester |
-| **Deployment & Containers** | Docker Compose, Railway, Render | Turnkey multi-stage container deployment configs |
+| **Deployment & Containers** | Docker Compose, Railway, Render | Multi-stage container deployment configs |
 
 ---
 
@@ -219,8 +212,8 @@ To test the conversation logic without audio:
 python scripts/cli_chat.py
 ```
 
-### 3. Twilio Telephony Setup (Real Phone Call)
-To connect a real inbound phone number to the agent:
+### 3. Twilio Telephony Setup (Incoming Call Greeting)
+To test the inbound call greeting with a phone number:
 1. **Expose your local server** using [ngrok](https://ngrok.com/):
    ```bash
    ngrok http 8000
@@ -238,21 +231,21 @@ To connect a real inbound phone number to the agent:
      - Set URL to: `https://abc123.ngrok-free.app/api/twilio/incoming-call`
      - Set HTTP method to **HTTP POST**
    - Click **Save**.
-4. **Place a Call:** Call your Twilio number from your mobile phone. Twilio will stream the 8kHz audio via WebSocket directly to `/ws/twilio`, connecting you to Riya!
+4. **Place a Call:** Call your Twilio number from your mobile phone. Twilio will execute the webhook and speak the greeting. Note that processing live incoming caller audio packets over WebSocket is not implemented in this prototype.
 
 ---
 
 ## 🛡️ Guardrails & Adversarial Testing
 
-Phase 7 of development executed **10 adversarial failure-mode scenarios** in `tests/test_adversarial_conversations.py` to ensure Riya behaves reliably under edge conditions:
+Phase 7 of development executed **10 adversarial failure mode scenarios** (out of 19 automated tests total in the repository). All 19 tests run against a rule based mock LLM (`MockLLMClient`) to ensure reproducible evaluation without live API keys or latency:
 
 1. **Impatient Caller:** Cuts pleasantries, immediately extracts parameters, and quotes inventory in under 50 words.
 2. **Off-Topic Questions:** Acknowledges in 1 brief phrase and gently steers back to real estate qualification.
 3. **Legal / Tax Guarantees:** Strict refusal of legal guarantees, redirecting to licensed legal advisors.
 4. **Financing Guarantees:** Defers loan interest rate promises to licensed mortgage brokers.
-5. **Hallucination Trap:** Requests for non-existent properties return 0 matches; Riya never invents listings.
+5. **Hallucination Trap:** Requests for non existent properties return 0 matches from the database (22 seeded listings); Riya never invents listings.
 6. **Caller Silence:** Checks in once after inactivity; gracefully terminates on second silence without looping.
-7. **Barge-in / Interruption:** User speech interrupts active playback and resets audio buffers.
+7. **Barge-in / Interruption:** Client side speech interruption stops playback and resets turn state.
 8. **Vague Answers:** Uses structured prompts to help buyer narrow budget and timeline.
 9. **Hostile Pushback:** Maintains professional composure, de-escalates, and offers human broker transfer.
 10. **Immediate Human Escalation:** Triggers `escalate_to_human()` and marks lead as escalated.
@@ -261,7 +254,7 @@ Run the complete test suite:
 ```bash
 pytest -v
 ```
-*(All 19 tests will pass in ~1.0s).*
+*(All 19 tests run against the rule based mock LLM and pass cleanly).*
 
 See [NOTES.md](file:///c:/Users/jaish/Desktop/NEWPROJECT/NOTES.md) for detailed Before & After failure logs and engineering decisions.
 
@@ -284,4 +277,4 @@ See [NOTES.md](file:///c:/Users/jaish/Desktop/NEWPROJECT/NOTES.md) for detailed 
 ---
 
 ## 📄 License
-MIT License. Built for portfolio demonstration of Voice AI agent orchestration, Pipecat, and LLM tool calling.
+MIT License. Built for portfolio demonstration of voice agent lead qualification and LLM function calling.

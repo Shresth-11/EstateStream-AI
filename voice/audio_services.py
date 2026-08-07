@@ -1,5 +1,5 @@
 """
-Audio Services: Deepgram STT and ElevenLabs TTS Integration with fallbacks.
+Audio Services: Deepgram STT REST helper and ElevenLabs TTS Integration with fallbacks.
 """
 
 import asyncio
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 async def transcribe_audio_deepgram(audio_bytes: bytes, content_type: str = "audio/wav") -> Optional[str]:
     """
-    Transcribes audio bytes using Deepgram Nova-2 REST or streaming endpoint.
+    Transcribes audio bytes using Deepgram Nova-2 REST endpoint (not used in live browser flow).
     """
     if not settings.DEEPGRAM_API_KEY or settings.DEEPGRAM_API_KEY.startswith("your_"):
         logger.warning("Deepgram API key not configured.")

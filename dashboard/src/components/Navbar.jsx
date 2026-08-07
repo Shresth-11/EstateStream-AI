@@ -18,7 +18,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenVoiceTester }) {
                 ESTATESTREAM <span className="text-[#d94336]">AI</span>
               </h1>
               <span className="hidden sm:inline-block text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[#feece8] text-[#b83226] border border-[#fbd2ca]">
-                Real-Time Voice AI
+                Voice Agent Prototype
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-[#78716c]">

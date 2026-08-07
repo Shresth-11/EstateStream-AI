@@ -60,7 +60,7 @@ export default function LeadList({
         <div className="max-w-3xl space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#feece8] border border-[#fbd2ca] text-[#b83226] text-xs font-bold uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>AI Voice Calling For Real Estate</span>
+            <span>AI Voice Agent Prototype</span>
           </div>
 
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-[#191512] tracking-tight leading-[1.15]">
@@ -69,22 +69,22 @@ export default function LeadList({
           </h2>
 
           <p className="text-base text-[#6b635b] leading-relaxed max-w-2xl font-normal">
-            Riya calls every buyer within 30 seconds, qualifies budget and preferred location in natural conversation, searches real inventory, and saves verified records straight into your CRM.
+            Riya qualifies buyer budget and preferred location in natural conversation, searches verified inventory from the database, and saves lead records directly into the CRM.
           </p>
 
           {/* Floating Pill Badges */}
           <div className="flex flex-wrap gap-2.5 pt-2">
             <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#ffffff] border border-[#ede5da] text-xs font-semibold text-[#191512] shadow-sm">
               <span className="w-2 h-2 rounded-full bg-[#d94336]"></span>
-              30-second callback
+              Interactive Voice Session
             </span>
             <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#ffffff] border border-[#ede5da] text-xs font-semibold text-[#191512] shadow-sm">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Auto-matches database inventory
+              Matches 22+ Database Listings
             </span>
             <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#ffffff] border border-[#ede5da] text-xs font-semibold text-[#191512] shadow-sm">
               <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-              Zero hallucinations guarantee
+              Strict Database Grounding
             </span>
           </div>
         </div>

@@ -1,7 +1,7 @@
 """
-Pipecat voice pipeline orchestration for Real Estate Lead Qualification.
+Pipecat voice pipeline prototype (planned, not implemented in active runtime).
 Connects Deepgram STT (Nova-2), LLM (GPT-4o with function calling),
-and ElevenLabs TTS (Turbo v2.5) with interruption handling.
+and ElevenLabs TTS (Turbo v2.5).
 """
 
 import asyncio
@@ -26,8 +26,7 @@ async def build_pipecat_twilio_pipeline(
     on_transcript_turn: Optional[Callable[[str, str], None]] = None,
 ):
     """
-    Constructs and runs a Pipecat pipeline bound to a Twilio Media Stream WebSocket.
-    Uses TwilioFrameSerializer to serialize/deserialize 8kHz audio frames.
+    Constructs a Pipecat pipeline bound to a Twilio Media Stream WebSocket (planned, not implemented in active live runtime).
     """
     try:
         from pipecat.serializers.twilio import TwilioFrameSerializer
