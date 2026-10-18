@@ -24,7 +24,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Set DB URL dynamically from settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL_SYNC)
+_sync_url = settings.DATABASE_URL_SYNC
+if _sync_url.startswith("postgresql://"):
+    _sync_url = _sync_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+config.set_main_option("sqlalchemy.url", _sync_url)
 
 target_metadata = Base.metadata
 

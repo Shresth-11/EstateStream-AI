@@ -34,12 +34,15 @@ AsyncSessionLocal = async_sessionmaker(
 
 # Synchronous Engine (used by Alembic and sync seed utilities)
 _sync_engine_kwargs = {}
-if "sqlite" in settings.DATABASE_URL_SYNC:
+_sync_url = settings.DATABASE_URL_SYNC
+if "sqlite" in _sync_url:
     _sync_engine_kwargs["connect_args"] = {"check_same_thread": False}
     _sync_engine_kwargs["poolclass"] = NullPool
+elif _sync_url.startswith("postgresql://"):
+    _sync_url = _sync_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 sync_engine = create_engine(
-    settings.DATABASE_URL_SYNC,
+    _sync_url,
     echo=False,
     future=True,
     **_sync_engine_kwargs,
