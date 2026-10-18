@@ -1,5 +1,8 @@
+import logging
 import os
 from contextlib import asynccontextmanager
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(message)s")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse

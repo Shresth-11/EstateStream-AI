@@ -4,18 +4,24 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy import create_engine
 from backend.config import settings
 
+from sqlalchemy.pool import NullPool
+
 # Base class for SQLAlchemy models
 class Base(DeclarativeBase):
     pass
 
 # Async Engine for FastAPI routes and background tasks
 # Handles both PostgreSQL (postgresql+asyncpg://) and SQLite (sqlite+aiosqlite://)
+_async_engine_kwargs = {}
+if "sqlite" in settings.DATABASE_URL:
+    _async_engine_kwargs["connect_args"] = {"check_same_thread": False}
+    _async_engine_kwargs["poolclass"] = NullPool
+
 async_engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     future=True,
-    # SQLite requires check_same_thread = False
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
+    **_async_engine_kwargs,
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -27,11 +33,16 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 # Synchronous Engine (used by Alembic and sync seed utilities)
+_sync_engine_kwargs = {}
+if "sqlite" in settings.DATABASE_URL_SYNC:
+    _sync_engine_kwargs["connect_args"] = {"check_same_thread": False}
+    _sync_engine_kwargs["poolclass"] = NullPool
+
 sync_engine = create_engine(
     settings.DATABASE_URL_SYNC,
     echo=False,
     future=True,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL_SYNC else {},
+    **_sync_engine_kwargs,
 )
 
 SyncSessionLocal = sessionmaker(
