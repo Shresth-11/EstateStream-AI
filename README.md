@@ -1,5 +1,6 @@
 # 🏡 EstateStream AI: Voice Agent Prototype for Real Estate
-> **Tech Stack:** Python, FastAPI, OpenAI GPT-4o, ElevenLabs, React, PostgreSQL, Docker
+> **Tech Stack:** Python, FastAPI, OpenAI GPT-4o, ElevenLabs, React, PostgreSQL, Docker  
+> **Live Demo:** [https://real-estate-voice-agent-kbmj.onrender.com/dashboard](https://real-estate-voice-agent-kbmj.onrender.com/dashboard)
 
 A voice agent prototype for real estate lead qualification (**EstateStream AI**). The agent (**Riya**) conducts conversational buyer qualification through a browser microphone interface using the browser Web Speech API, searches verified listings from the database (22 seeded listings), uses OpenAI GPT-4o function calling (`search_properties`, `save_lead`, `escalate_to_human`), synthesizes voice responses using ElevenLabs REST (with browser speechSynthesis fallback), and persists turn transcripts to a React dashboard. Phone calls run through a server-side pipeline (voice activity detection, Whisper/Deepgram STT, Piper/ElevenLabs TTS, barge-in) on the Twilio Media Streams protocol, testable for free with the built-in phone simulator.
 
@@ -232,6 +233,8 @@ Open **http://localhost:8000/phone-sim** (or "Phone Call" in the dashboard), use
 The simulator is a browser phone that speaks the exact Twilio Media Streams protocol to `/ws/twilio`,
 so the same server code answers real Twilio calls unchanged. It also shows live transcripts, tool calls and per-turn latency.
 
+*(Note: The hosted `/phone-sim` on Render requires cloud speech keys (`DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY`) because Render's free tier has 512 MB of RAM and cannot run local Whisper. For free testing without cloud keys, `/phone-sim` runs locally with the local speech models).*
+
 Measured on a laptop-class CPU with the offline agent: speech-to-text ≈ 0.9–1.1 s, reply on the line ≈ 1.9 s after the
 caller's 0.7 s end-of-speech pause. GPT-4o adds roughly 0.5–1.5 s per turn.
 
@@ -261,7 +264,7 @@ To test the inbound call greeting with a phone number:
 
 ## 🛡️ Guardrails & Adversarial Testing
 
-Phase 7 of development executed **10 adversarial failure mode scenarios** (out of 28 automated tests total in the repository). All 28 tests run against a rule based mock LLM (`MockLLMClient`) to ensure reproducible evaluation without live API keys or latency:
+Phase 7 of development executed **10 adversarial failure mode scenarios** (out of 34 automated tests total in the repository). All 34 tests run against a rule based mock LLM (`MockLLMClient`) to ensure reproducible evaluation without live API keys or latency:
 
 1. **Impatient Caller:** Cuts pleasantries, immediately extracts parameters, and quotes inventory in under 50 words.
 2. **Off-Topic Questions:** Acknowledges in 1 brief phrase and gently steers back to real estate qualification.
@@ -278,7 +281,7 @@ Run the complete test suite:
 ```bash
 pytest -v
 ```
-*(All 28 tests run against the rule based mock LLM on a throwaway SQLite file, so your local `real_estate.db` is never touched. 9 of them are end-to-end regression tests over the real `/ws/browser-audio` WebSocket; see `DEBUG_REPORT.md`.)*
+*(All 34 tests run against the rule based mock LLM on a throwaway SQLite file, so your local `real_estate.db` is never touched. 9 of them are end-to-end regression tests over the real `/ws/browser-audio` WebSocket; see `DEBUG_REPORT.md`.)*
 
 See [NOTES.md](NOTES.md) for detailed Before & After failure logs and engineering decisions.
 

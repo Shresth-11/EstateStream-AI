@@ -19,7 +19,7 @@ Voice AI agent prototype (**"Riya"**, **EstateStream AI**) built to qualify pros
 2. **LLM Provider Abstraction & Offline Execution:**
    - Default engine: OpenAI GPT-4o with native function calling (`search_properties`, `save_lead`, `escalate_to_human`).
    - Thin wrapper interface: `BaseLLMClient` defines `generate_response(messages, tools)`. Swapping to Anthropic Claude or Mistral requires only subclassing `BaseLLMClient`.
-   - Heuristic fallback engine: `MockLLMClient` provides intelligent, rule based qualification behavior so all 28 automated tests, CLI interaction (`python scripts/cli_chat.py`), and the frontend dashboard function 100% offline without live API credit requirements or latency.
+   - Heuristic fallback engine: `MockLLMClient` provides intelligent, rule based qualification behavior so all 34 automated tests, CLI interaction (`python scripts/cli_chat.py`), and the frontend dashboard function 100% offline without live API credit requirements or latency.
 
 3. **Voice Pipeline (Browser Audio & Services):**
    - Live speech to text runs on the browser Web Speech API.
@@ -39,7 +39,7 @@ Voice AI agent prototype (**"Riya"**, **EstateStream AI**) built to qualify pros
 
 ## Phase 7: Adversarial and Guardrail Testing Results
 
-We executed 10 adversarial conversation scenarios in `tests/test_adversarial_conversations.py` (part of the 28 automated tests total in the repository, all tested against `MockLLMClient`). Below are the documented failure modes observed during baseline testing and the corrective guardrails implemented:
+We executed 10 adversarial conversation scenarios in `tests/test_adversarial_conversations.py` (part of the 34 automated tests total in the repository, all tested against `MockLLMClient`). Below are the documented failure modes observed during baseline testing and the corrective guardrails implemented:
 
 | # | Scenario | Caller Input | Baseline (Before Fix) | Corrective Guardrail Applied | Verified Behavior (After Fix) |
 |---|---|---|---|---|---|
