@@ -19,7 +19,7 @@ Voice AI agent prototype (**"Riya"**, **EstateStream AI**) built to qualify pros
 2. **LLM Provider Abstraction & Offline Execution:**
    - Default engine: OpenAI GPT-4o with native function calling (`search_properties`, `save_lead`, `escalate_to_human`).
    - Thin wrapper interface: `BaseLLMClient` defines `generate_response(messages, tools)`. Swapping to Anthropic Claude or Mistral requires only subclassing `BaseLLMClient`.
-   - Heuristic fallback engine: `MockLLMClient` provides intelligent, rule based qualification behavior so all 19 automated tests, CLI interaction (`python scripts/cli_chat.py`), and the frontend dashboard function 100% offline without live API credit requirements or latency.
+   - Heuristic fallback engine: `MockLLMClient` provides intelligent, rule based qualification behavior so all 28 automated tests, CLI interaction (`python scripts/cli_chat.py`), and the frontend dashboard function 100% offline without live API credit requirements or latency.
 
 3. **Voice Pipeline (Browser Audio & Services):**
    - Live speech to text runs on the browser Web Speech API.
@@ -28,15 +28,18 @@ Voice AI agent prototype (**"Riya"**, **EstateStream AI**) built to qualify pros
    - Pipecat is explored in a standalone prototype file (`voice/pipeline.py`), but is not wired into the active FastAPI server.
    - Dedicated local browser testing path: `/ws/browser-audio` and `/voice-test` provide an interactive HTML5/Web Audio microphone client with live waveform visualizer for local development.
 
-4. **Telephony (Twilio Integration Status):**
-   - Webhook `/api/twilio/incoming-call` generates TwiML greeting response.
-   - WebSocket `/ws/twilio` receives the initial connection event and sends greeting audio, but processing incoming caller audio packets is not implemented in this prototype.
+4. **Telephony (Server-Side Phone Pipeline):**
+   - Webhook `/api/twilio/incoming-call` returns TwiML that connects the call to `/ws/twilio` and passes the caller's number.
+   - `/ws/twilio` (`voice/telephony/phone_session.py`) implements the Twilio Media Streams protocol: μ-law decode (`codec.py`, bit-exact with G.711), energy VAD with adaptive noise floor and 700 ms endpointing (`vad.py`), STT and TTS (`engines.py`), `mark`-based playback tracking, `clear`-based barge-in after 300 ms of caller speech, silence watchdog, and hang-up after the goodbye plays.
+   - Engines: Deepgram/ElevenLabs when keys exist; otherwise free local faster-whisper (`base.en`, int8 CPU, domain vocabulary prompt + BHK homophone normalizer) and Piper.
+   - `/phone-sim` is a browser phone speaking the same protocol, so the pipeline is testable without Twilio.
+   - Known limits: utterance-level (not streaming) STT, so latency includes the 700 ms endpoint wait plus full STT; energy VAD can be fooled by loud background speech; no Twilio signature validation yet.
 
 ---
 
 ## Phase 7: Adversarial and Guardrail Testing Results
 
-We executed 10 adversarial conversation scenarios in `tests/test_adversarial_conversations.py` (part of the 19 automated tests total in the repository, all tested against `MockLLMClient`). Below are the documented failure modes observed during baseline testing and the corrective guardrails implemented:
+We executed 10 adversarial conversation scenarios in `tests/test_adversarial_conversations.py` (part of the 28 automated tests total in the repository, all tested against `MockLLMClient`). Below are the documented failure modes observed during baseline testing and the corrective guardrails implemented:
 
 | # | Scenario | Caller Input | Baseline (Before Fix) | Corrective Guardrail Applied | Verified Behavior (After Fix) |
 |---|---|---|---|---|---|

@@ -6,14 +6,17 @@ export default function ConversationsView({ onSelectLead }) {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
+  const [error, setError] = useState(null);
 
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await fetchConversations();
       setConversations(data);
     } catch (e) {
       console.error(e);
+      setError('Could not load call sessions from the backend. Check that the API server is running.');
     } finally {
       setLoading(false);
     }
@@ -35,6 +38,8 @@ export default function ConversationsView({ onSelectLead }) {
         return <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1"><ShieldAlert className="w-3 h-3 text-rose-600" /> Escalated</span>;
       case 'dropped':
         return <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold">Dropped</span>;
+      case 'not_interested':
+        return <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 text-xs font-bold">Not Interested</span>;
       default:
         return <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 text-xs font-bold">Incomplete</span>;
     }
@@ -46,6 +51,10 @@ export default function ConversationsView({ onSelectLead }) {
         <h2 className="text-2xl font-extrabold text-[#191512] tracking-tight">Call Sessions & Turn Logs</h2>
         <p className="text-xs text-[#6b635b] mt-0.5">Call records captured via browser microphone voice session</p>
       </div>
+
+      {error && (
+        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">{error}</div>
+      )}
 
       {loading ? (
         <div className="text-center py-20 text-[#6b635b]">

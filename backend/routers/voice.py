@@ -9,9 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import settings
 from backend.database import AsyncSessionLocal, get_db
-from backend.services.conversation_service import create_conversation, generate_llm_summary
-from backend.services.lead_service import save_lead
-from backend.models import ConversationOutcome
+from backend.services.conversation_service import persist_session
 from voice.agent import AgentSession
 from voice.audio_services import synthesize_speech_elevenlabs, transcribe_audio_deepgram
 
@@ -28,6 +26,13 @@ async def twilio_incoming_call(request: Request):
     Twilio Voice webhook for inbound calls.
     Returns TwiML connecting the call to the WebSocket Media Stream.
     """
+    caller_number = ""
+    if request.method == "POST":
+        try:
+            form = await request.form()
+            caller_number = str(form.get("From") or "")
+        except Exception:
+            caller_number = ""
     host = request.headers.get("host", "localhost:8000")
     protocol = "wss" if "https" in str(request.base_url) or not ("localhost" in host or "127.0.0.1" in host) else "ws"
     
@@ -40,10 +45,10 @@ async def twilio_incoming_call(request: Request):
 
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Aditi">Connecting you to Placeholder Realty's qualification assistant, Riya.</Say>
     <Connect>
         <Stream url="{stream_url}">
             <Parameter name="caller" value="inbound" />
+            <Parameter name="from" value="{caller_number}" />
         </Stream>
     </Connect>
 </Response>"""
@@ -61,83 +66,58 @@ async def twilio_status_callback(request: Request):
     return {"status": "received"}
 
 
-# --- TWILIO MEDIA STREAM WEBSOCKET ---
+# --- TWILIO MEDIA STREAM WEBSOCKET (live phone pipeline) ---
 
 @router.websocket("/ws/twilio")
 async def twilio_websocket_endpoint(websocket: WebSocket):
     """
-    WebSocket endpoint for Twilio Media Streams (prototype stub).
-    Handles start event and sends initial greeting. Incoming caller audio packets are not processed.
+    Live phone calls over the Twilio Media Streams protocol: server-side voice activity
+    detection, speech-to-text, the agent, text-to-speech and barge-in. Also used, unchanged,
+    by the free browser phone simulator at /phone-sim.
     """
+    from voice.telephony.engines import get_stt, get_tts
+    from voice.telephony.phone_session import PhoneCallSession
+
     await websocket.accept()
-    stream_sid: Optional[str] = None
-    call_sid: Optional[str] = None
-    start_time = time.time()
-
-    agent = AgentSession(
-        session_id=f"twilio-{int(time.time())}",
-        caller_phone="+15551234567",
-        caller_name="Inbound Caller",
-    )
-    initial_greeting = await agent.get_initial_greeting()
-
+    stt = await asyncio.to_thread(get_stt)
+    tts = await asyncio.to_thread(get_tts)
+    call = PhoneCallSession(websocket, stt, tts)
     try:
-        # Attempt to synthesize initial greeting
-        greeting_audio = await synthesize_speech_elevenlabs(initial_greeting)
-
-        while True:
-            raw_msg = await websocket.receive_text()
-            data = json.loads(raw_msg)
-            event_type = data.get("event")
-
-            if event_type == "start":
-                stream_sid = data.get("streamSid")
-                call_sid = data.get("start", {}).get("callSid")
-                logger.info(f"Twilio Media Stream started: streamSid={stream_sid}, callSid={call_sid}")
-
-                # Send initial greeting audio if available
-                if greeting_audio and stream_sid:
-                    payload_b64 = base64.b64encode(greeting_audio).decode("utf-8")
-                    media_msg = {
-                        "event": "media",
-                        "streamSid": stream_sid,
-                        "media": {"payload": payload_b64},
-                    }
-                    await websocket.send_text(json.dumps(media_msg))
-
-            elif event_type == "media":
-                # Raw audio payload (base64 encoded 8kHz μ-law)
-                payload_raw = data.get("media", {}).get("payload")
-                # Note: Incoming caller audio is not processed in this prototype
-
-            elif event_type == "stop":
-                logger.info(f"Twilio Media Stream stopped for streamSid={stream_sid}")
-                break
-
+        await call.run()
     except WebSocketDisconnect:
-        logger.info("Twilio WebSocket client disconnected.")
+        logger.info("Twilio media stream disconnected.")
     except Exception as e:
-        logger.error(f"Error in Twilio WebSocket handler: {e}")
+        logger.error(f"Error in phone call handler: {e}", exc_info=True)
     finally:
-        # Persist conversation
-        duration = int(time.time() - start_time)
-        transcript = agent.get_transcript()
-        async with AsyncSessionLocal() as db:
-            summary_info = await generate_llm_summary(transcript)
-            outcome = ConversationOutcome.QUALIFIED.value if agent.captured_lead else ConversationOutcome.INCOMPLETE.value
-            if agent.escalated:
-                outcome = ConversationOutcome.ESCALATED.value
+        try:
+            async with AsyncSessionLocal() as db:
+                conv = await persist_session(db, call.agent, time.time() - call.started_at)
+                await db.commit()
+            logger.info(f"Phone call saved as conversation #{conv.id} ({conv.outcome})")
+        except Exception as e:
+            logger.error(f"Failed to persist phone call: {e}", exc_info=True)
 
-            lead_id = agent.captured_lead.id if agent.captured_lead else None
-            await create_conversation(
-                db=db,
-                transcript=transcript,
-                lead_id=lead_id,
-                summary=summary_info.get("summary"),
-                outcome=summary_info.get("outcome", outcome),
-                duration_seconds=max(duration, 10),
-            )
-            await db.commit()
+
+async def _run_turn_and_reply(websocket: WebSocket, agent: AgentSession, user_text: str, extra: Optional[dict] = None) -> dict:
+    """Runs one agent turn, synthesizes speech, and sends the agent_speech packet."""
+    async with AsyncSessionLocal() as db:
+        result = await agent.process_user_turn(user_text, db)
+        await db.commit()
+    reply_text = result["reply"]
+    audio_bytes = await synthesize_speech_elevenlabs(reply_text)
+    packet = {
+        "type": "agent_speech",
+        "text": reply_text,
+        "audio": base64.b64encode(audio_bytes).decode("utf-8") if audio_bytes else None,
+        "tools_called": result["tools_called"],
+        "lead_saved": result.get("lead_saved"),
+        "call_ended": result["call_ended"],
+        "escalated": result["escalated"],
+    }
+    if extra:
+        packet.update(extra)
+    await websocket.send_text(json.dumps(packet, default=str))
+    return result
 
 
 # --- LOCAL BROWSER WEBSOCKET AUDIO ENDPOINT ---
@@ -151,7 +131,7 @@ async def browser_audio_websocket(websocket: WebSocket):
     """
     await websocket.accept()
     session_id = f"browser-{int(time.time())}"
-    agent = AgentSession(session_id=session_id, caller_name="Browser User", caller_phone="+15559876543")
+    agent = AgentSession(session_id=session_id)
     start_time = time.time()
 
     # Send initial greeting event
@@ -176,31 +156,10 @@ async def browser_audio_websocket(websocket: WebSocket):
 
             # 1. Direct text/speech turn from browser
             if msg_type == "user_speech":
-                user_text = data.get("text", "").strip()
-                if not user_text:
-                    continue
+                # Empty text is treated as a silence turn (the client sends one after an idle timeout).
+                user_text = (data.get("text") or "").strip() or "[silence]"
 
-                async with AsyncSessionLocal() as db:
-                    result = await agent.process_user_turn(user_text, db)
-                    await db.commit()
-
-                reply_text = result["reply"]
-                audio_bytes = await synthesize_speech_elevenlabs(reply_text)
-                reply_audio_b64 = base64.b64encode(audio_bytes).decode("utf-8") if audio_bytes else None
-
-                # Send response back to browser
-                await websocket.send_text(
-                    json.dumps({
-                        "type": "agent_speech",
-                        "text": reply_text,
-                        "audio": reply_audio_b64,
-                        "tools_called": result["tools_called"],
-                        "lead_saved": result.get("lead_saved"),
-                        "call_ended": result["call_ended"],
-                        "escalated": result["escalated"],
-                    })
-                )
-
+                result = await _run_turn_and_reply(websocket, agent, user_text)
                 if result["call_ended"]:
                     break
 
@@ -211,26 +170,9 @@ async def browser_audio_websocket(websocket: WebSocket):
                     raw_audio = base64.b64decode(chunk_b64)
                     transcription = await transcribe_audio_deepgram(raw_audio)
                     if transcription:
-                        async with AsyncSessionLocal() as db:
-                            result = await agent.process_user_turn(transcription, db)
-                            await db.commit()
-
-                        reply_text = result["reply"]
-                        audio_bytes = await synthesize_speech_elevenlabs(reply_text)
-                        reply_audio_b64 = base64.b64encode(audio_bytes).decode("utf-8") if audio_bytes else None
-
-                        await websocket.send_text(
-                            json.dumps({
-                                "type": "agent_speech",
-                                "transcription": transcription,
-                                "text": reply_text,
-                                "audio": reply_audio_b64,
-                                "tools_called": result["tools_called"],
-                                "lead_saved": result.get("lead_saved"),
-                                "call_ended": result["call_ended"],
-                                "escalated": result["escalated"],
-                            })
-                        )
+                        result = await _run_turn_and_reply(websocket, agent, transcription, {"transcription": transcription})
+                        if result["call_ended"]:
+                            break
 
             # 3. Barge-in / User Interruption event
             elif msg_type == "interruption":
@@ -248,26 +190,14 @@ async def browser_audio_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Error in browser audio WebSocket: {e}", exc_info=True)
     finally:
-        # Wrap up & post-call persistence
-        duration = int(time.time() - start_time)
-        transcript = agent.get_transcript()
-        async with AsyncSessionLocal() as db:
-            summary_info = await generate_llm_summary(transcript)
-            outcome = ConversationOutcome.QUALIFIED.value if agent.captured_lead else ConversationOutcome.INCOMPLETE.value
-            if agent.escalated:
-                outcome = ConversationOutcome.ESCALATED.value
-
-            lead_id = agent.captured_lead.id if agent.captured_lead else None
-            conv = await create_conversation(
-                db=db,
-                transcript=transcript,
-                lead_id=lead_id,
-                summary=summary_info.get("summary"),
-                outcome=summary_info.get("outcome", outcome),
-                duration_seconds=max(duration, 5),
-            )
-            await db.commit()
-
+        conv = None
+        try:
+            async with AsyncSessionLocal() as db:
+                conv = await persist_session(db, agent, time.time() - start_time)
+                await db.commit()
+        except Exception as e:
+            logger.error(f"Failed to persist browser session {session_id}: {e}", exc_info=True)
+        if conv is not None:
             try:
                 await websocket.send_text(
                     json.dumps({
@@ -276,7 +206,7 @@ async def browser_audio_websocket(websocket: WebSocket):
                         "summary": conv.summary,
                         "outcome": conv.outcome,
                         "duration_seconds": conv.duration_seconds,
-                        "lead_id": lead_id,
+                        "lead_id": conv.lead_id,
                     })
                 )
             except Exception:

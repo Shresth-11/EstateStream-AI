@@ -23,12 +23,15 @@ export default function LeadDetailModal({ lead, onClose, onLeadUpdated }) {
   }, [lead.id]);
 
   const handleStatusChange = async (newStatus) => {
+    const previous = selectedStatus;
+    setSelectedStatus(newStatus);
     try {
-      setSelectedStatus(newStatus);
       const updated = await updateLeadStatus(lead.id, newStatus);
       if (onLeadUpdated) onLeadUpdated(updated);
     } catch (e) {
       console.error(e);
+      setSelectedStatus(previous); // roll back the optimistic change; nothing was saved
+      alert('Could not update the lead status. Please try again.');
     }
   };
 

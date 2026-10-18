@@ -83,19 +83,21 @@ async def synthesize_speech_elevenlabs(text: str) -> Optional[bytes]:
             url = "https://api.cartesia.ai/tts/bytes"
             headers = {
                 "X-API-Key": settings.CARTESIA_API_KEY,
-                "Cartesia-Version": "2024-06-10",
+                "Cartesia-Version": settings.CARTESIA_VERSION,
                 "Content-Type": "application/json",
             }
             payload = {
                 "transcript": text,
-                "model_id": "sonic-english",
+                "model_id": settings.CARTESIA_MODEL,
                 "voice": {"mode": "id", "id": settings.CARTESIA_VOICE_ID},
-                "output_format": {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 24000},
+                # MP3, not raw PCM: the browser decodes this with decodeAudioData, which can't read headerless PCM.
+                "output_format": {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000},
             }
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code == 200:
                     return resp.content
+                logger.warning(f"Cartesia TTS failed with code {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             logger.error(f"Exception in Cartesia fallback: {e}")
 

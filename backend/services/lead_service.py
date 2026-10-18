@@ -5,6 +5,28 @@ from sqlalchemy.orm import selectinload
 from backend.models import Lead, LeadStatus
 
 
+def normalize_phone(raw: Optional[str]) -> str:
+    """Strip spaces/dashes/brackets so the same caller always upserts the same row."""
+    if not raw or not str(raw).strip():
+        return "unknown"
+    raw = str(raw).strip()
+    if raw.startswith("unknown"):
+        return raw
+    digits = "".join(c for c in raw if c.isdigit())
+    if not digits:
+        return raw
+    return ("+" if raw.startswith("+") else "") + digits
+
+
+def _derive_status(lead: Lead) -> str:
+    """Status from the lead's merged fields, so a later partial save never downgrades it."""
+    if lead.budget_max and lead.preferred_location and (lead.timeline or lead.financing_status):
+        return LeadStatus.QUALIFIED.value
+    if lead.budget_max or lead.preferred_location or lead.bhk_preference:
+        return LeadStatus.NEEDS_FOLLOWUP.value
+    return LeadStatus.NEW.value
+
+
 async def save_lead(
     db: AsyncSession,
     name: str,
@@ -21,20 +43,12 @@ async def save_lead(
     Persists or updates lead details. If a lead with the same phone exists,
     updates their preferences and details.
     """
-    # Clean phone
-    clean_phone = phone.strip() if phone else "+15550000000"
+    clean_phone = normalize_phone(phone)
     
     # Check if lead exists
     stmt = select(Lead).where(Lead.phone == clean_phone)
     result = await db.execute(stmt)
     lead = result.scalar_one_or_none()
-
-    # Determine status: if budget, location, and timeline exist, it's qualified
-    calculated_status = status or LeadStatus.NEW.value
-    if budget_max and preferred_location and (timeline or financing_status):
-        calculated_status = LeadStatus.QUALIFIED.value
-    elif not status and (budget_max or preferred_location):
-        calculated_status = LeadStatus.NEEDS_FOLLOWUP.value
 
     if lead:
         if name and name.strip() and name != "Prospective Buyer":
@@ -51,7 +65,7 @@ async def save_lead(
             lead.timeline = timeline
         if financing_status:
             lead.financing_status = financing_status
-        lead.status = calculated_status
+        lead.status = status or _derive_status(lead)
     else:
         lead = Lead(
             name=name.strip() if name and name.strip() else "Prospective Buyer",
@@ -62,8 +76,8 @@ async def save_lead(
             bhk_preference=bhk_preference,
             timeline=timeline,
             financing_status=financing_status,
-            status=calculated_status,
         )
+        lead.status = status or _derive_status(lead)
         db.add(lead)
 
     await db.flush()

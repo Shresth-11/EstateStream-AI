@@ -1,7 +1,7 @@
 # 🏡 EstateStream AI: Voice Agent Prototype for Real Estate
 > **Tech Stack:** Python, FastAPI, OpenAI GPT-4o, ElevenLabs, React, PostgreSQL, Docker
 
-A voice agent prototype for real estate lead qualification (**EstateStream AI**). The agent (**Riya**) conducts conversational buyer qualification through a browser microphone interface using the browser Web Speech API, searches verified listings from the database (22 seeded listings), uses OpenAI GPT-4o function calling (`search_properties`, `save_lead`, `escalate_to_human`), synthesizes voice responses using ElevenLabs REST (with browser speechSynthesis fallback), and persists turn transcripts to a React dashboard. Twilio telephony includes a working greeting webhook, while incoming caller audio processing is not implemented.
+A voice agent prototype for real estate lead qualification (**EstateStream AI**). The agent (**Riya**) conducts conversational buyer qualification through a browser microphone interface using the browser Web Speech API, searches verified listings from the database (22 seeded listings), uses OpenAI GPT-4o function calling (`search_properties`, `save_lead`, `escalate_to_human`), synthesizes voice responses using ElevenLabs REST (with browser speechSynthesis fallback), and persists turn transcripts to a React dashboard. Phone calls run through a server-side pipeline (voice activity detection, Whisper/Deepgram STT, Piper/ElevenLabs TTS, barge-in) on the Twilio Media Streams protocol, testable for free with the built-in phone simulator.
 
 ---
 
@@ -57,7 +57,8 @@ flowchart TD
 | **Speech-to-Text (STT)** | Browser Web Speech API | Client-side speech recognition in the live flow (Deepgram REST helper exists in backend but is not used in the live browser flow) |
 | **Text-to-Speech (TTS)** | ElevenLabs REST | Conversational voice synthesis via ElevenLabs REST API with browser speechSynthesis fallback |
 | **LLM Engine** | OpenAI GPT-4o (Function Calling) | Abstracted behind `BaseLLMClient` with tools (`search_properties`, `save_lead`, `escalate_to_human`) and offline `MockLLMClient` fallback |
-| **Telephony** | Twilio Programmable Voice | TwiML greeting webhook (incoming caller audio processing is not implemented) |
+| **Telephony** | Twilio Media Streams protocol | Full server-side phone pipeline on `/ws/twilio`: 8 kHz μ-law, voice activity detection, STT, agent, TTS, barge-in (`clear`), silence hang-up. Free browser simulator at `/phone-sim` |
+| **Phone STT / TTS** | faster-whisper + Piper (free, local) or Deepgram + ElevenLabs | Pluggable via `STT_ENGINE` / `TTS_ENGINE`; `auto` uses hosted engines when keys are set |
 | **Voice Framework** | Pipecat (Planned / Not Implemented) | Standalone experimental pipeline file in repository, not wired into active server |
 | **Local Testing Client** | HTML5 / Web Audio API | Live audio waveform visualizer and browser voice session testing |
 | **Database & Migrations** | PostgreSQL, SQLAlchemy, Alembic | Async ORM with automatic local SQLite fallback and 22 seeded listings |
@@ -144,16 +145,15 @@ ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
 
 ### 3. Install Python Dependencies
 ```bash
-pip install -r requirements.txt
-pip install deepgram-sdk elevenlabs
+pip install -r requirements-dev.txt   # app + test deps (use requirements.txt for production)
 ```
 
 ### 4. Database Initialization & Seeding
 By default, the backend uses SQLite (`real_estate.db`) for immediate local plug-and-play development without needing Docker. If you have PostgreSQL running, set `DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/real_estate_agent`.
 
-Run the database seed script to generate **22 realistic property listings**:
+The backend seeds **22 property listings** plus demo leads automatically on first start (only when the tables are empty). To wipe and reseed manually:
 ```bash
-python scripts/seed_properties.py
+python scripts/seed_properties.py --reset
 ```
 To apply Alembic migrations:
 ```bash
@@ -212,7 +212,30 @@ To test the conversation logic without audio:
 python scripts/cli_chat.py
 ```
 
-### 3. Twilio Telephony Setup (Incoming Call Greeting)
+### 3. Live Phone Calls, Free (Phone Simulator)
+
+The phone pipeline runs entirely on the server, exactly as it would for a real Twilio call:
+
+```
+caller audio (8 kHz μ-law, 20 ms frames) → voice activity detection → speech-to-text
+  → Riya (LLM + tools) → text-to-speech (8 kHz μ-law) → back on the line
+  + barge-in: caller talks over Riya → server sends Twilio `clear` → playback stops
+  + silence: no speech for 8 s → check-in; again → goodbye → hang-up
+```
+
+No Twilio account or API keys needed:
+```bash
+pip install -r requirements-voice.txt        # Whisper + Piper (free, run on CPU)
+uvicorn backend.main:app --port 8000          # first start downloads ~200 MB of models
+```
+Open **http://localhost:8000/phone-sim** (or "Phone Call" in the dashboard), use headphones, press **Call Riya**.
+The simulator is a browser phone that speaks the exact Twilio Media Streams protocol to `/ws/twilio`,
+so the same server code answers real Twilio calls unchanged. It also shows live transcripts, tool calls and per-turn latency.
+
+Measured on a laptop-class CPU with the offline agent: speech-to-text ≈ 0.9–1.1 s, reply on the line ≈ 1.9 s after the
+caller's 0.7 s end-of-speech pause. GPT-4o adds roughly 0.5–1.5 s per turn.
+
+### 4. Real Twilio Telephony (Optional, Paid After Trial)
 To test the inbound call greeting with a phone number:
 1. **Expose your local server** using [ngrok](https://ngrok.com/):
    ```bash
@@ -231,13 +254,14 @@ To test the inbound call greeting with a phone number:
      - Set URL to: `https://abc123.ngrok-free.app/api/twilio/incoming-call`
      - Set HTTP method to **HTTP POST**
    - Click **Save**.
-4. **Place a Call:** Call your Twilio number from your mobile phone. Twilio will execute the webhook and speak the greeting. Note that processing live incoming caller audio packets over WebSocket is not implemented in this prototype.
+4. **Place a Call:** Call your Twilio number. Riya greets you and holds the full conversation through `/ws/twilio`; the caller's number is saved as the lead's phone.
+   Twilio's trial (no card) includes limited voice and Media Streams minutes and restricts calls to your sign-up country, so the simulator above is the free way to test.
 
 ---
 
 ## 🛡️ Guardrails & Adversarial Testing
 
-Phase 7 of development executed **10 adversarial failure mode scenarios** (out of 19 automated tests total in the repository). All 19 tests run against a rule based mock LLM (`MockLLMClient`) to ensure reproducible evaluation without live API keys or latency:
+Phase 7 of development executed **10 adversarial failure mode scenarios** (out of 28 automated tests total in the repository). All 28 tests run against a rule based mock LLM (`MockLLMClient`) to ensure reproducible evaluation without live API keys or latency:
 
 1. **Impatient Caller:** Cuts pleasantries, immediately extracts parameters, and quotes inventory in under 50 words.
 2. **Off-Topic Questions:** Acknowledges in 1 brief phrase and gently steers back to real estate qualification.
@@ -254,9 +278,9 @@ Run the complete test suite:
 ```bash
 pytest -v
 ```
-*(All 19 tests run against the rule based mock LLM and pass cleanly).*
+*(All 28 tests run against the rule based mock LLM on a throwaway SQLite file, so your local `real_estate.db` is never touched. 9 of them are end-to-end regression tests over the real `/ws/browser-audio` WebSocket; see `DEBUG_REPORT.md`.)*
 
-See [NOTES.md](file:///c:/Users/jaish/Desktop/NEWPROJECT/NOTES.md) for detailed Before & After failure logs and engineering decisions.
+See [NOTES.md](NOTES.md) for detailed Before & After failure logs and engineering decisions.
 
 ---
 
@@ -267,12 +291,16 @@ See [NOTES.md](file:///c:/Users/jaish/Desktop/NEWPROJECT/NOTES.md) for detailed 
 2. Link the repository on [Railway](https://railway.app/).
 3. Add a **PostgreSQL** service on Railway.
 4. Add the environment variables from `.env.example` in Railway's Variables tab.
-5. Railway uses `railway.json` and `Dockerfile` to build and deploy automatically.
+5. Railway uses `railway.json` and `Dockerfile` to build and deploy automatically. The container binds to Railway's `$PORT`.
+   The React dashboard is served by the backend at `/dashboard` (same origin, no extra config).
 6. Set your Twilio Voice Webhook URL to: `https://your-railway-app.up.railway.app/api/twilio/incoming-call`.
 
 ### Deploying to Render
 1. Create a new **Web Service** on [Render](https://render.com/) pointing to your repository.
-2. Use the provided [render.yaml](file:///c:/Users/jaish/Desktop/NEWPROJECT/render.yaml) blueprint to spin up the web app and managed PostgreSQL instance simultaneously.
+2. Use the provided [render.yaml](render.yaml) blueprint. Note: it uses SQLite, and Render's free-tier disk is ephemeral, so leads are lost on every redeploy or spin-down. Point `DATABASE_URL`/`DATABASE_URL_SYNC` at a managed PostgreSQL instance for anything you want to keep.
+
+### Split deploy (frontend on Vercel)
+Build the dashboard with `VITE_API_URL=https://<your-backend>` and add the Vercel origin to the backend's `CORS_ORIGINS`. Without `VITE_API_URL` the dashboard calls its own origin.
 
 ---
 

@@ -1,11 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Mic, PhoneOff, PhoneCall, Bot, User, Wrench, Sparkles } from 'lucide-react';
 
+// Seconds of caller silence (after Riya finishes speaking) before a silence turn is sent.
+// The backend checks in once, then ends the call on the second consecutive silence.
+const SILENCE_TIMEOUT_MS = 9000;
+
+// Words shared between what the mic heard and what Riya is saying. Used to drop
+// speaker echo (laptop speakers -> mic) so Riya doesn't interrupt or answer herself.
+function looksLikeEcho(heard, agentText) {
+  if (!heard || !agentText) return false;
+  const norm = (t) => t.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+  const h = norm(heard);
+  if (h.length === 0) return false;
+  const agentWords = new Set(norm(agentText));
+  const overlap = h.filter((w) => agentWords.has(w)).length / h.length;
+  return overlap >= 0.7;
+}
+
 export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
   const [inCall, setInCall] = useState(false);
   const [status, setStatus] = useState('Ready to connect');
   const [messages, setMessages] = useState([]);
   const [audioVolume, setAudioVolume] = useState(0);
+  const [speechSupported] = useState(
+    () => typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  );
+  const [typedText, setTypedText] = useState('');
 
   const wsRef = useRef(null);
   const mediaStreamRef = useRef(null);
@@ -13,22 +33,72 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
   const speechRecRef = useRef(null);
   const currentAudioSourceRef = useRef(null);
   const transcriptEndRef = useRef(null);
+  // Refs (not state) for values read inside long-lived callbacks. The old code read
+  // `inCall` state inside recognition.onend, which was always the stale `false`, so
+  // the mic never restarted after Chrome ended recognition on the first pause.
+  const inCallRef = useRef(false);
+  const agentSpeakingRef = useRef(false);
+  const agentTextRef = useRef('');
+  const silenceTimerRef = useRef(null);
+  const rafRef = useRef(null);
+
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  };
+
+  const armSilenceTimer = () => {
+    clearSilenceTimer();
+    if (!inCallRef.current) return;
+    silenceTimerRef.current = setTimeout(() => {
+      if (inCallRef.current && !agentSpeakingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'user_speech', text: '' }));
+      }
+    }, SILENCE_TIMEOUT_MS);
+  };
+
+  const stopAgentAudio = () => {
+    if (currentAudioSourceRef.current) {
+      try { currentAudioSourceRef.current.stop(); } catch (e) {}
+      currentAudioSourceRef.current = null;
+    }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    agentSpeakingRef.current = false;
+  };
+
+  const onAgentFinishedSpeaking = () => {
+    agentSpeakingRef.current = false;
+    if (!inCallRef.current) {
+      // Call already ended server-side; release audio once the goodbye has played.
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+      return;
+    }
+    armSilenceTimer();
+  };
 
   const cleanup = () => {
+    inCallRef.current = false;
+    clearSilenceTimer();
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (speechRecRef.current) {
-      try { speechRecRef.current.stop(); } catch (e) {}
+      const sr = speechRecRef.current;
       speechRecRef.current = null;
+      try { sr.stop(); } catch (e) {}
     }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
-    if (currentAudioSourceRef.current) {
-      try { currentAudioSourceRef.current.stop(); } catch (e) {}
-      currentAudioSourceRef.current = null;
-    }
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
+    stopAgentAudio();
+    if (audioCtxRef.current) {
+      // Browsers cap live AudioContexts; leaking one per call eventually breaks audio.
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
     }
     setAudioVolume(0);
   };
@@ -39,22 +109,55 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
 
   useEffect(() => {
     return () => {
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch (e) {}
+      }
       cleanup();
     };
   }, []);
 
+  const sendUserText = (text) => {
+    const clean = (text || '').trim();
+    if (!clean) return;
+    clearSilenceTimer();
+    stopAgentAudio();
+    setMessages((prev) => [...prev, { role: 'user', text: clean }]);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'user_speech', text: clean }));
+    }
+  };
+
+  const buildWsUrl = () => {
+    if (import.meta.env.VITE_WS_URL) return `${import.meta.env.VITE_WS_URL.replace(/\/$/, '')}/ws/browser-audio`;
+    if (import.meta.env.VITE_API_URL) {
+      const base = import.meta.env.VITE_API_URL.replace(/\/$/, '').replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+      return `${base}/ws/browser-audio`;
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws/browser-audio`;
+  };
+
   const startVoiceCall = async () => {
+    if (!window.isSecureContext) {
+      setStatus('Microphone needs HTTPS or localhost');
+      return;
+    }
     try {
       setInCall(true);
+      inCallRef.current = true;
       setStatus('Connecting to Riya...');
       setMessages([]);
 
       // 1. Microphone capture & visualizer
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
       mediaStreamRef.current = stream;
 
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       audioCtxRef.current = audioCtx;
+      // Created after an await, so some browsers start it suspended -> no playback.
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 64;
@@ -66,69 +169,69 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
         analyser.getByteFrequencyData(dataArray);
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-        const avg = sum / dataArray.length / 255;
-        setAudioVolume(avg);
-        requestAnimationFrame(updateVolume);
+        setAudioVolume(sum / dataArray.length / 255);
+        rafRef.current = requestAnimationFrame(updateVolume);
       };
       updateVolume();
 
       // 2. WebSocket Connection
-      let wsUrl = '';
-      if (import.meta.env.VITE_WS_URL) {
-        wsUrl = `${import.meta.env.VITE_WS_URL}/ws/browser-audio`;
-      } else if (import.meta.env.VITE_API_URL) {
-        const cleanHost = import.meta.env.VITE_API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-        wsUrl = `${cleanHost}/ws/browser-audio`;
-      } else {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        wsUrl = `${protocol}//${window.location.host}/ws/browser-audio`;
-      }
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(buildWsUrl());
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setStatus('Call Active • Speaking with Riya');
-        initSpeechRecognition();
+        setStatus(speechSupported ? 'Call Active • Speaking with Riya' : 'Call Active • Type below (voice input needs Chrome/Edge)');
+        if (speechSupported) initSpeechRecognition();
+      };
+
+      ws.onerror = () => {
+        setStatus('Could not reach the voice server');
       };
 
       ws.onmessage = (event) => {
+        let data;
         try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'agent_speech') {
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: 'assistant',
-                text: data.text,
-                tools: data.tools_called,
-              },
-            ]);
-
-            if (data.audio) {
-              playAgentAudio(data.audio);
-            } else {
-              speakLocally(data.text);
-            }
-
-            if (data.call_ended) {
-              setTimeout(() => endVoiceCall(), 4000);
-            }
-          } else if (data.type === 'call_summary') {
-            setStatus(`Call Ended: ${data.outcome}`);
-            if (onCallCompleted) onCallCompleted();
-          }
+          data = JSON.parse(event.data);
         } catch (e) {
-          console.error(e);
+          console.error('Bad message from server', e);
+          return;
+        }
+        if (data.type === 'agent_speech') {
+          setMessages((prev) => [...prev, { role: 'assistant', text: data.text, tools: data.tools_called }]);
+          agentTextRef.current = data.text || '';
+          clearSilenceTimer();
+          if (data.audio) {
+            playAgentAudio(data.audio, data.text);
+          } else {
+            speakLocally(data.text);
+          }
+        } else if (data.type === 'call_summary') {
+          setStatus(`Call Ended: ${data.outcome}`);
+          if (onCallCompleted) onCallCompleted();
         }
       };
 
       ws.onclose = () => {
-        setStatus('Call Ended');
+        // Server closes after call_ended (goodbye / escalation / silence). Let the
+        // final sentence finish, then release the mic.
+        inCallRef.current = false;
+        clearSilenceTimer();
         setInCall(false);
+        setStatus((s) => (s.startsWith('Call Ended') ? s : 'Call Ended'));
+        if (speechRecRef.current) {
+          const sr = speechRecRef.current;
+          speechRecRef.current = null;
+          try { sr.stop(); } catch (e) {}
+        }
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+        }
+        setAudioVolume(0);
       };
     } catch (err) {
       console.error(err);
-      setStatus('Mic permission needed / Error');
+      setStatus(err && err.name === 'NotAllowedError' ? 'Microphone permission denied' : 'Could not start the call');
+      cleanup();
       setInCall(false);
     }
   };
@@ -139,74 +242,99 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
 
     const sr = new SpeechRec();
     sr.continuous = true;
-    sr.interimResults = false;
+    sr.interimResults = true; // interim results enable real barge-in mid-sentence
     sr.lang = 'en-US';
 
     sr.onresult = (event) => {
-      const last = event.results.length - 1;
-      const text = event.results[last][0].transcript.trim();
-      if (text) {
-        if (currentAudioSourceRef.current) {
-          try { currentAudioSourceRef.current.stop(); } catch(e){}
-        }
-        if (window.speechSynthesis) {
-          window.speechSynthesis.cancel();
-        }
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0].transcript.trim();
+        if (!text) continue;
 
-        setMessages((prev) => [...prev, { role: 'user', text }]);
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'user_speech', text }));
+        if (agentSpeakingRef.current && looksLikeEcho(text, agentTextRef.current)) {
+          continue; // Riya's own voice coming back through the mic
         }
+        if (!result.isFinal) {
+          // Caller started talking over Riya: stop her immediately (barge-in).
+          if (agentSpeakingRef.current && text.split(/\s+/).length >= 2) {
+            stopAgentAudio();
+            wsRef.current?.readyState === WebSocket.OPEN &&
+              wsRef.current.send(JSON.stringify({ type: 'interruption' }));
+          }
+          clearSilenceTimer();
+          continue;
+        }
+        sendUserText(text);
       }
     };
 
     sr.onerror = (e) => {
-      if (e.error !== 'no-speech') console.error('Speech recognition error:', e);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setStatus('Speech recognition blocked. Type below instead.');
+        speechRecRef.current = null;
+      } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        console.error('Speech recognition error:', e.error);
+      }
     };
 
+    // Chrome ends "continuous" recognition after pauses; restart while the call is live.
     sr.onend = () => {
-      if (speechRecRef.current && inCall) {
-        try { speechRecRef.current.start(); } catch (e) {}
+      if (speechRecRef.current === sr && inCallRef.current) {
+        try { sr.start(); } catch (e) {}
       }
     };
 
     speechRecRef.current = sr;
-    sr.start();
+    try { sr.start(); } catch (e) { console.error(e); }
   };
 
-  const playAgentAudio = (base64) => {
+  const playAgentAudio = async (base64, text) => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
     try {
       const binary = atob(base64);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-      audioCtxRef.current?.decodeAudioData(bytes.buffer, (buffer) => {
-        if (currentAudioSourceRef.current) {
-          try { currentAudioSourceRef.current.stop(); } catch (e) {}
+      const buffer = await ctx.decodeAudioData(bytes.buffer);
+      stopAgentAudio();
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(ctx.destination);
+      src.onended = () => {
+        if (currentAudioSourceRef.current === src) {
+          currentAudioSourceRef.current = null;
+          onAgentFinishedSpeaking();
         }
-        const src = audioCtxRef.current.createBufferSource();
-        src.buffer = buffer;
-        src.connect(audioCtxRef.current.destination);
-        currentAudioSourceRef.current = src;
-        src.start(0);
-      });
+      };
+      currentAudioSourceRef.current = src;
+      agentSpeakingRef.current = true;
+      src.start(0);
     } catch (e) {
-      console.error('Audio decode error:', e);
+      console.error('Audio decode error, falling back to browser voice:', e);
+      speakLocally(text);
     }
   };
 
   const speakLocally = (text) => {
-    if ('speechSynthesis' in window) {
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1.05;
-      window.speechSynthesis.speak(u);
+    if (!text || !('speechSynthesis' in window)) {
+      onAgentFinishedSpeaking();
+      return;
     }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05;
+    u.onend = onAgentFinishedSpeaking;
+    u.onerror = onAgentFinishedSpeaking;
+    agentSpeakingRef.current = true;
+    window.speechSynthesis.speak(u);
   };
 
   const endVoiceCall = () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // Server persists the call and replies with call_summary, then closes the socket.
       wsRef.current.send(JSON.stringify({ type: 'end_call' }));
-      setTimeout(() => wsRef.current?.close(), 300);
+      const ws = wsRef.current;
+      setTimeout(() => { try { ws.close(); } catch (e) {} }, 3000);
     }
     cleanup();
     setInCall(false);
@@ -317,6 +445,22 @@ export default function VoiceTestModal({ isOpen, onClose, onCallCompleted }) {
           )}
           <div ref={transcriptEndRef} />
         </div>
+
+        {/* Typed input: works in every browser and is handy for demos in noisy rooms */}
+        {inCall && (
+          <form
+            className="px-4 pt-3 bg-[#fbf8f3] border-t border-[#ede5da] flex gap-2"
+            onSubmit={(e) => { e.preventDefault(); sendUserText(typedText); setTypedText(''); }}
+          >
+            <input
+              value={typedText}
+              onChange={(e) => setTypedText(e.target.value)}
+              placeholder={speechSupported ? 'Or type a message…' : 'Type your message to Riya…'}
+              className="flex-1 px-3 py-2 text-xs rounded-xl border border-[#ede5da] bg-white focus:outline-none focus:border-[#d94336]"
+            />
+            <button type="submit" className="px-4 py-2 text-xs font-bold rounded-xl bg-[#191512] text-white">Send</button>
+          </form>
+        )}
 
         {/* Footer Controls */}
         <div className="p-4 border-t border-[#ede5da] bg-[#fbf8f3] flex items-center justify-center gap-4">

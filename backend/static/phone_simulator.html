@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>EstateStream AI · Phone Call Simulator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📞</text></svg>" />
+<style>
+  :root {
+    --bg: #fbf8f3; --card: #ffffff; --ink: #191512; --muted: #78716c; --line: #ede5da;
+    --brand: #d94336; --brand-soft: #fff5f3; --caller: #f4ede4; --ok: #059669; --warn: #b45309; --err: #b91c1c;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141110; --card: #1d1917; --ink: #f5efe8; --muted: #a8a29e; --line: #2e2825;
+      --brand: #ef5a4c; --brand-soft: #2a1c1a; --caller: #26211e; --ok: #34d399; --warn: #fbbf24; --err: #f87171;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px; display: grid; gap: 16px; grid-template-columns: 340px 1fr; }
+  @media (max-width: 820px) { .wrap { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 20px; }
+  h1 { font-size: 18px; margin: 0 0 4px; } h2 { font-size: 14px; margin: 0 0 10px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .phone { text-align: center; }
+  .avatar { width: 88px; height: 88px; border-radius: 50%; margin: 12px auto; display: grid; place-items: center;
+            background: var(--brand-soft); color: var(--brand); font-size: 34px; font-weight: 800; position: relative; }
+  .avatar.talking::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 3px solid var(--brand); animation: pulse 1s infinite; }
+  @keyframes pulse { 0% { opacity: .9; transform: scale(.95) } 100% { opacity: 0; transform: scale(1.2) } }
+  .status { font-weight: 700; margin: 6px 0 2px; } .timer { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .meter { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 14px 0 6px; }
+  .meter > div { height: 100%; width: 0; background: var(--ok); transition: width 60ms linear; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; border: 1px solid var(--line); margin: 2px; }
+  .pill.on { background: var(--ok); color: #fff; border-color: var(--ok); }
+  .pill.riya { background: var(--brand); color: #fff; border-color: var(--brand); }
+  button { font: inherit; font-weight: 800; border: 0; border-radius: 14px; padding: 12px 20px; cursor: pointer; }
+  .call { background: var(--ok); color: #fff; width: 100%; margin-top: 12px; }
+  .hang { background: var(--err); color: #fff; width: 100%; margin-top: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  label { display: block; text-align: left; font-size: 12px; color: var(--muted); margin-top: 12px; }
+  input { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
+  .log { height: 460px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 85%; padding: 10px 12px; border-radius: 14px; }
+  .msg.riya { background: var(--brand-soft); align-self: flex-start; }
+  .msg.caller { background: var(--caller); align-self: flex-end; }
+  .msg .who { font-size: 11px; font-weight: 800; color: var(--muted); margin-bottom: 2px; }
+  .sys { align-self: center; font-size: 11px; color: var(--muted); }
+  .sys.err { color: var(--err); font-weight: 700; }
+  .tool { align-self: center; font-size: 11px; font-weight: 700; color: var(--warn); border: 1px dashed var(--warn); border-radius: 99px; padding: 2px 10px; }
+  .lat { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .note { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; text-align: left; }
+  code { font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card phone">
+    <h1>Phone call simulator</h1>
+    <div class="muted">Speaks the exact Twilio Media Streams protocol (8&nbsp;kHz μ-law) to <code>/ws/twilio</code></div>
+    <div class="avatar" id="avatar">R</div>
+    <div class="status" id="status">Idle</div>
+    <div class="timer" id="timer">00:00</div>
+    <div class="meter"><div id="level"></div></div>
+    <div>
+      <span class="pill" id="pillYou">You: quiet</span>
+      <span class="pill" id="pillRiya">Riya: quiet</span>
+    </div>
+    <label for="from">Caller ID (optional, saved as the lead's phone)</label>
+    <input id="from" placeholder="+91 98xxxxxxxx" autocomplete="tel" />
+    <button class="call" id="callBtn">📞 Call Riya</button>
+    <button class="hang" id="hangBtn" hidden>Hang up</button>
+    <div class="note">
+      Use <b>headphones</b>: on laptop speakers Riya can hear herself and interrupt.<br />
+      Talk over Riya to test <b>barge-in</b>; stay quiet to test the <b>silence</b> check-in and auto hang-up.
+      <div id="engines" style="margin-top:6px"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Live call</h2>
+    <div class="log" id="log"><div class="sys">Press “Call Riya” and allow the microphone.</div></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------------- G.711 mu-law (same tables as the server) ----------------
+  const ULAW_DECODE = new Int16Array(256);
+  for (let i = 0; i < 256; i++) {
+    const u = ~i & 0xff, sign = u & 0x80, exp = (u >> 4) & 7, man = u & 0x0f;
+    let s = ((man << 3) + 0x84) << exp; s -= 0x84;
+    ULAW_DECODE[i] = sign ? -s : s;
+  }
+  const SEG_END = [0x3f, 0x7f, 0xff, 0x1ff, 0x3ff, 0x7ff, 0xfff, 0x1fff];
+  function linearToUlaw(sample) {
+    let pcm = sample >> 2, mask;
+    if (pcm < 0) { pcm = -pcm; mask = 0x7f; } else { mask = 0xff; }
+    if (pcm > 8159) pcm = 8159;
+    pcm += 0x21;
+    let seg = 0; while (seg < 8 && pcm > SEG_END[seg]) seg++;
+    if (seg >= 8) return 0x7f ^ mask;
+    return (((seg << 4) | ((pcm >> (seg + 1)) & 0x0f)) ^ mask) & 0xff;
+  }
+  const b64encode = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); };
+  const b64decode = (str) => { const s = atob(str), out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i); return out; };
+
+  // ---------------- capture worklet: mic -> 8 kHz int16 frames of 160 ----------------
+  const WORKLET = `
+    class Downsampler extends AudioWorkletProcessor {
+      constructor() { super(); this.ratio = sampleRate / 8000; this.pos = 0; this.acc = 0; this.n = 0; this.out = new Int16Array(160); this.i = 0; }
+      process(inputs) {
+        const ch = inputs[0] && inputs[0][0];
+        if (!ch) return true;
+        for (let k = 0; k < ch.length; k++) {
+          this.acc += ch[k]; this.n++;               // boxcar average = cheap anti-alias filter
+          this.pos += 1;
+          if (this.pos >= this.ratio) {
+            this.pos -= this.ratio;
+            const v = Math.max(-1, Math.min(1, this.acc / this.n));
+            this.acc = 0; this.n = 0;
+            this.out[this.i++] = v * 32767;
+            if (this.i === 160) { this.port.postMessage(this.out.slice(0)); this.i = 0; }
+          }
+        }
+        return true;
+      }
+    }
+    registerProcessor("downsampler", Downsampler);`;
+
+  // ---------------- state ----------------
+  const $ = (id) => document.getElementById(id);
+  let ws = null, ctx = null, stream = null, node = null, src = null;
+  let streamSid = null, seq = 0, chunk = 0, t0 = 0, timerId = null;
+  let playHead = 0, playing = [], markTimers = [];
+  let riyaTalkingUntil = 0;
+
+  const rid = (p) => p + Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+
+  function log(kind, text, extra) {
+    const el = document.createElement("div");
+    if (kind === "riya" || kind === "caller") {
+      el.className = "msg " + kind;
+      el.innerHTML = `<div class="who">${kind === "riya" ? "Riya" : "You"}</div>`;
+      el.appendChild(document.createTextNode(text));
+      if (extra) { const l = document.createElement("div"); l.className = "lat"; l.textContent = extra; el.appendChild(l); }
+    } else {
+      el.className = kind; el.textContent = text;
+    }
+    $("log").appendChild(el); $("log").scrollTop = $("log").scrollHeight;
+  }
+  const setStatus = (t) => { $("status").textContent = t; };
+
+  // ---------------- playback of Riya's audio, with Twilio mark/clear semantics ----------------
+  function playUlaw(bytes) {
+    const f = new Float32Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) f[i] = ULAW_DECODE[bytes[i]] / 32768;
+    const buf = ctx.createBuffer(1, f.length, 8000);
+    buf.copyToChannel(f, 0);
+    const s = ctx.createBufferSource();
+    s.buffer = buf; s.connect(ctx.destination);
+    playHead = Math.max(playHead, ctx.currentTime + 0.04);
+    s.start(playHead);
+    playHead += buf.duration;
+    riyaTalkingUntil = playHead;
+    playing.push(s);
+    s.onended = () => { playing = playing.filter((x) => x !== s); };
+  }
+
+  function scheduleMarkEcho(name) {
+    // Twilio echoes a mark when playback reaches it.
+    const delayMs = Math.max(0, (playHead - ctx.currentTime) * 1000);
+    const id = setTimeout(() => {
+      markTimers = markTimers.filter((m) => m.id !== id);
+      send({ event: "mark", streamSid, sequenceNumber: String(++seq), mark: { name } });
+    }, delayMs);
+    markTimers.push({ id, name });
+  }
+
+  function clearPlayback() {
+    // Twilio "clear": flush queued audio and immediately return all pending marks.
+    playing.forEach((s) => { try { s.stop(); } catch (e) {} });
+    playing = []; playHead = ctx ? ctx.currentTime : 0; riyaTalkingUntil = 0;
+    const pending = markTimers; markTimers = [];
+    pending.forEach((m) => { clearTimeout(m.id); send({ event: "mark", streamSid, sequenceNumber: String(++seq), mark: { name: m.name } }); });
+  }
+
+  function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+
+  // ---------------- server -> simulator ----------------
+  let lastRiya = null;
+  function onServerMessage(ev) {
+    const m = JSON.parse(ev.data);
+    switch (m.event) {
+      case "media": playUlaw(b64decode(m.media.payload)); break;
+      case "mark": scheduleMarkEcho(m.mark.name); break;
+      case "clear": clearPlayback(); log("sys", "↯ barge-in: Riya stopped talking"); break;
+      case "x-debug": onDebug(m); break;
+    }
+  }
+  function onDebug(m) {
+    if (m.type === "status" && m.text.startsWith("connected")) { $("engines").textContent = "Engines: " + m.text.replace("connected ", ""); return; }
+    if (m.type === "caller") log("caller", m.text, `speech-to-text ${m.stt_ms} ms`);
+    else if (m.type === "agent") { log("riya", m.text, `voice synthesis ${m.tts_ms} ms`); lastRiya = $("log").lastElementChild; }
+    else if (m.type === "tools") m.tools.forEach((t) => log("tool", `⚙ ${t.name}(${JSON.stringify(t.arguments)})` + (t.matches != null ? ` → ${t.matches} match(es)` : "")));
+    else if (m.type === "latency" && lastRiya) {
+      // Arrives right after the reply it measures.
+      lastRiya.querySelector(".lat").textContent = m.stt_ms === 0
+        ? "silence check-in (you were quiet)"
+        : `heard you → reply on the line in ${m.total_ms} ms (STT ${m.stt_ms} · agent ${m.agent_ms}) + ${m.endpoint_ms} ms end-of-speech wait`;
+    }
+    else if (m.type === "vad") { $("pillYou").textContent = m.state === "speech" ? "You: speaking" : "You: quiet"; $("pillYou").classList.toggle("on", m.state === "speech"); }
+    else if (m.type === "error") log("sys err", "⚠ " + m.text);
+    else if (m.type === "status" && m.text !== "interrupted") log("sys", m.text);
+  }
+
+  // ---------------- call lifecycle ----------------
+  async function startCall() {
+    if (!window.isSecureContext) { log("sys err", "Microphone needs HTTPS or localhost."); return; }
+    $("callBtn").disabled = true; setStatus("Dialling…");
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") await ctx.resume();
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+      await ctx.audioWorklet.addModule(url);
+      src = ctx.createMediaStreamSource(stream);
+      node = new AudioWorkletNode(ctx, "downsampler");
+      src.connect(node);
+    } catch (e) {
+      log("sys err", e && e.name === "NotAllowedError" ? "Microphone permission denied." : "Could not start audio: " + e);
+      cleanup(); return;
+    }
+
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(`${proto}//${location.host}/ws/twilio`);
+    streamSid = rid("MZ"); seq = 0; chunk = 0; playHead = 0; lastRiya = null;
+    $("log").innerHTML = "";
+
+    ws.onopen = () => {
+      send({ event: "connected", protocol: "Call", version: "1.0.0" });
+      const from = $("from").value.replace(/[^\d+]/g, "");
+      send({
+        event: "start", sequenceNumber: String(++seq), streamSid,
+        start: {
+          accountSid: "ACsimulator", streamSid, callSid: rid("CA"), tracks: ["inbound"],
+          customParameters: { caller: "inbound", from, debug: "1" },
+          mediaFormat: { encoding: "audio/x-mulaw", sampleRate: 8000, channels: 1 },
+        },
+      });
+      t0 = performance.now();
+      node.port.onmessage = (e) => onMicFrame(e.data);
+      setStatus("Connected"); $("hangBtn").hidden = false; $("callBtn").hidden = true;
+      timerId = setInterval(tick, 200);
+      log("sys", "Call connected");
+    };
+    ws.onmessage = onServerMessage;
+    ws.onerror = () => log("sys err", "Could not reach /ws/twilio. Is the backend running?");
+    ws.onclose = () => {
+      // Let Riya's goodbye finish before tearing audio down.
+      const wait = ctx ? Math.max(0, (playHead - ctx.currentTime) * 1000) : 0;
+      setStatus("Call ended"); log("sys", "Call ended — check the dashboard for the saved conversation.");
+      stopMic();
+      setTimeout(cleanup, wait + 300);
+    };
+  }
+
+  function onMicFrame(int16) {
+    // meter
+    let sum = 0; for (let i = 0; i < int16.length; i++) sum += (int16[i] / 32768) ** 2;
+    $("level").style.width = Math.min(100, Math.sqrt(sum / int16.length) * 400) + "%";
+    const bytes = new Uint8Array(int16.length);
+    for (let i = 0; i < int16.length; i++) bytes[i] = linearToUlaw(int16[i]);
+    send({
+      event: "media", sequenceNumber: String(++seq), streamSid,
+      media: { track: "inbound", chunk: String(++chunk), timestamp: String(Math.round(performance.now() - t0)), payload: b64encode(bytes) },
+    });
+  }
+
+  function tick() {
+    const s = Math.floor((performance.now() - t0) / 1000);
+    $("timer").textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    const talking = ctx && ctx.currentTime < riyaTalkingUntil;
+    $("avatar").classList.toggle("talking", !!talking);
+    $("pillRiya").textContent = talking ? "Riya: speaking" : "Riya: quiet";
+    $("pillRiya").classList.toggle("riya", !!talking);
+  }
+
+  function hangUp() {
+    send({ event: "stop", sequenceNumber: String(++seq), streamSid, stop: { accountSid: "ACsimulator", callSid: "" } });
+    try { ws.close(); } catch (e) {}
+  }
+
+  function stopMic() {
+    if (node) { node.port.onmessage = null; try { node.disconnect(); } catch (e) {} }
+    if (src) { try { src.disconnect(); } catch (e) {} }
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    node = src = stream = null;
+    $("level").style.width = "0";
+  }
+
+  function cleanup() {
+    stopMic();
+    markTimers.forEach((m) => clearTimeout(m.id)); markTimers = [];
+    if (ctx) { ctx.close().catch(() => {}); ctx = null; }
+    clearInterval(timerId);
+    $("avatar").classList.remove("talking");
+    $("callBtn").disabled = false; $("callBtn").hidden = false; $("hangBtn").hidden = true;
+    $("pillYou").classList.remove("on"); $("pillRiya").classList.remove("riya");
+  }
+
+  $("callBtn").onclick = startCall;
+  $("hangBtn").onclick = hangUp;
+})();
+</script>
+</body>
+</html>

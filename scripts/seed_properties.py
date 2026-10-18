@@ -16,7 +16,7 @@ from backend.models import Property, Lead, Conversation
 from backend.seed_data import SAMPLE_PROPERTIES, SAMPLE_LEADS
 
 
-def seed_database(reset: bool = True):
+def seed_database(reset: bool = False):
     """Creates tables if necessary and populates sample properties and leads."""
     print("Creating tables if not present...")
     Base.metadata.create_all(bind=sync_engine)
@@ -28,6 +28,9 @@ def seed_database(reset: bool = True):
             session.execute(delete(Lead))
             session.execute(delete(Property))
             session.commit()
+        elif session.query(Property).count() > 0:
+            print("Database already has data; nothing to do. Use --reset to wipe and reseed.")
+            return
 
         print(f"Seeding {len(SAMPLE_PROPERTIES)} properties...")
         for prop_data in SAMPLE_PROPERTIES:
@@ -56,4 +59,4 @@ def seed_database(reset: bool = True):
 
 
 if __name__ == "__main__":
-    seed_database(reset=True)
+    seed_database(reset="--reset" in sys.argv)

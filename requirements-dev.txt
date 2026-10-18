@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8.1.0
+pytest-asyncio>=0.23.5
+pipecat-ai>=0.0.50  # only for the experimental voice/pipeline.py

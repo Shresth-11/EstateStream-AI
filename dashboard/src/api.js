@@ -1,12 +1,22 @@
-const PROD_RENDER_URL = 'https://real-estate-voice-agent-kbmj.onrender.com';
-
-// If VITE_API_URL is provided, use it. If running on remote host (e.g. Vercel), default to the live Render backend.
-const API_URL = import.meta.env.VITE_API_URL || 
-  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' 
-    ? PROD_RENDER_URL 
-    : '');
-
+// Same-origin by default (Vite proxy in dev, FastAPI-served build in Docker/Railway/Render).
+// For a split deploy (e.g. Vercel frontend), set VITE_API_URL at build time.
+// The old default silently pointed every non-localhost host at a stale Render instance.
+const API_URL = import.meta.env.VITE_API_URL || '';
 const API_BASE = API_URL ? `${API_URL.replace(/\/$/, '')}/api` : '/api';
+
+// Hardcoded demo data is OFF by default. When it was always on, a broken backend
+// looked like a working dashboard, which hid real bugs (e.g. /api/conversations 500s).
+// Enable only for a static, backend-less demo: VITE_DEMO_FALLBACK=true
+export const DEMO_FALLBACK = import.meta.env.VITE_DEMO_FALLBACK === 'true';
+
+async function getJson(url, options) {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`${options?.method || 'GET'} ${url} failed: ${res.status} ${body.slice(0, 200)}`);
+  }
+  return res.json();
+}
 
 export const FALLBACK_LEADS = [
   {
@@ -241,145 +251,103 @@ export const FALLBACK_CONVERSATIONS = [
 ];
 
 export async function fetchLeads(status = '', search = '') {
+  const params = new URLSearchParams();
+  if (status && status !== 'all') params.append('status', status);
+  if (search) params.append('search', search);
   try {
-    const params = new URLSearchParams();
-    if (status && status !== 'all') params.append('status', status);
-    if (search) params.append('search', search);
-
-    const res = await fetch(`${API_BASE}/leads?${params.toString()}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        return data;
-      }
-      // If backend returned 0 leads and there was no search filter, fallback to seeded leads
-      if (Array.isArray(data) && data.length === 0 && !search && (!status || status === 'all')) {
-        return FALLBACK_LEADS;
-      }
-      if (Array.isArray(data)) {
-        return data;
-      }
-    }
+    return await getJson(`${API_BASE}/leads?${params.toString()}`);
   } catch (err) {
-    console.warn('Backend fetch failed, using fallback leads:', err);
+    if (!DEMO_FALLBACK) throw err;
+    console.warn('Using demo leads:', err);
+    let results = [...FALLBACK_LEADS];
+    if (status && status !== 'all') results = results.filter((l) => l.status === status);
+    if (search) {
+      const q = search.toLowerCase();
+      results = results.filter(
+        (l) =>
+          l.name.toLowerCase().includes(q) ||
+          l.phone.includes(q) ||
+          (l.preferred_location && l.preferred_location.toLowerCase().includes(q))
+      );
+    }
+    return results;
   }
-
-  // Graceful fallback so dashboard is never blank or empty
-  let results = [...FALLBACK_LEADS];
-  if (status && status !== 'all') {
-    results = results.filter((l) => l.status === status);
-  }
-  if (search) {
-    const q = search.toLowerCase();
-    results = results.filter(
-      (l) =>
-        l.name.toLowerCase().includes(q) ||
-        l.phone.includes(q) ||
-        (l.preferred_location && l.preferred_location.toLowerCase().includes(q))
-    );
-  }
-  return results;
 }
 
 export async function fetchLeadById(id) {
   try {
-    const res = await fetch(`${API_BASE}/leads/${id}`);
-    if (res.ok) return await res.json();
+    return await getJson(`${API_BASE}/leads/${id}`);
   } catch (err) {
-    console.warn(`Backend fetch failed for lead #${id}:`, err);
+    if (!DEMO_FALLBACK) throw err;
+    return FALLBACK_LEADS.find((l) => l.id === Number(id)) || null;
   }
-  return FALLBACK_LEADS.find((l) => l.id === Number(id)) || FALLBACK_LEADS[0];
 }
 
 export async function updateLeadStatus(id, newStatus) {
-  try {
-    const res = await fetch(`${API_BASE}/leads/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    if (res.ok) return await res.json();
-  } catch (err) {
-    console.warn('Update lead status error:', err);
-  }
-  const lead = FALLBACK_LEADS.find((l) => l.id === Number(id));
-  if (lead) lead.status = newStatus;
-  return lead || { id, status: newStatus };
+  // Never fake a successful write: the UI must reflect what the server actually saved.
+  return getJson(`${API_BASE}/leads/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: newStatus }),
+  });
 }
 
 export async function fetchConversations(leadId = null) {
+  const url = leadId ? `${API_BASE}/conversations?lead_id=${leadId}` : `${API_BASE}/conversations`;
   try {
-    const url = leadId ? `${API_BASE}/conversations?lead_id=${leadId}` : `${API_BASE}/conversations`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) return data;
-    }
+    // An empty array is a real answer (e.g. a new lead with no calls) - don't replace it.
+    return await getJson(url);
   } catch (err) {
-    console.warn('Fetch conversations fallback:', err);
+    if (!DEMO_FALLBACK) throw err;
+    console.warn('Using demo conversations:', err);
+    return leadId ? FALLBACK_CONVERSATIONS.filter((c) => c.lead_id === Number(leadId)) : FALLBACK_CONVERSATIONS;
   }
-
-  if (leadId) {
-    return FALLBACK_CONVERSATIONS.filter((c) => c.lead_id === Number(leadId));
-  }
-  return FALLBACK_CONVERSATIONS;
 }
 
 export async function fetchConversationById(id) {
   try {
-    const res = await fetch(`${API_BASE}/conversations/${id}`);
-    if (res.ok) return await res.json();
+    return await getJson(`${API_BASE}/conversations/${id}`);
   } catch (err) {
-    console.warn(`Fetch conversation #${id} fallback:`, err);
+    if (!DEMO_FALLBACK) throw err;
+    return FALLBACK_CONVERSATIONS.find((c) => c.id === Number(id)) || null;
   }
-  return FALLBACK_CONVERSATIONS.find((c) => c.id === Number(id)) || FALLBACK_CONVERSATIONS[0];
 }
 
+const FALLBACK_PROPERTIES = [
+  { id: 1, title: "Sunlit Urban Studio Loft", location: "Downtown", price: 280000, bhk_config: "1 BHK", description: "Modern open-concept loft with floor-to-ceiling windows and rapid transit access.", amenities: ["Fitness Center", "Rooftop Terrace", "In-unit Laundry"] },
+  { id: 2, title: "Midtown Modern High-Rise Apartment", location: "Midtown", price: 420000, bhk_config: "2 BHK", description: "Sleek 2-bedroom corner unit with panoramic city skyline views.", amenities: ["24/7 Concierge", "Swimming Pool", "Covered Parking"] },
+  { id: 3, title: "Spacious Downtown Executive Suite", location: "Downtown", price: 550000, bhk_config: "2 BHK", description: "Luxurious 2 BHK near corporate hubs and fine dining.", amenities: ["24/7 Security", "Gym", "Valet Parking"] },
+  { id: 4, title: "Parkside Family Garden Apartment", location: "Uptown", price: 680000, bhk_config: "3 BHK", description: "Sprawling 3-bedroom residence facing Central Park.", amenities: ["Children Play Area", "Private Garden Patio", "Reserved Parking"] },
+];
+
 export async function fetchProperties(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.location) params.append('location', filters.location);
+  if (filters.budget_max) params.append('budget_max', filters.budget_max);
+  if (filters.bhk) params.append('bhk', filters.bhk);
   try {
-    const params = new URLSearchParams();
-    if (filters.location) params.append('location', filters.location);
-    if (filters.budget_max) params.append('budget_max', filters.budget_max);
-    if (filters.bhk) params.append('bhk', filters.bhk);
-
-    const res = await fetch(`${API_BASE}/properties?${params.toString()}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) return data;
-    }
+    // An empty result for a filter is a real answer - don't swap in demo listings.
+    return await getJson(`${API_BASE}/properties?${params.toString()}`);
   } catch (err) {
-    console.warn('Fetch properties fallback:', err);
+    if (!DEMO_FALLBACK) throw err;
+    return FALLBACK_PROPERTIES.filter((p) => {
+      if (filters.location && !p.location.toLowerCase().includes(filters.location.toLowerCase())) return false;
+      if (filters.budget_max && p.price > Number(filters.budget_max)) return false;
+      if (filters.bhk && p.bhk_config !== `${filters.bhk} BHK` && p.bhk_config !== filters.bhk) return false;
+      return true;
+    });
   }
-
-  // Fallback properties
-  const allProps = [
-    { id: 1, title: "Sunlit Urban Studio Loft", location: "Downtown", price: 280000, bhk_config: "1 BHK", description: "Modern open-concept loft with floor-to-ceiling windows and rapid transit access.", amenities: ["Fitness Center", "Rooftop Terrace", "In-unit Laundry"] },
-    { id: 2, title: "Midtown Modern High-Rise Apartment", location: "Midtown", price: 420000, bhk_config: "2 BHK", description: "Sleek 2-bedroom corner unit with panoramic city skyline views.", amenities: ["24/7 Concierge", "Swimming Pool", "Covered Parking"] },
-    { id: 3, title: "Spacious Downtown Executive Suite", location: "Downtown", price: 550000, bhk_config: "2 BHK", description: "Luxurious 2 BHK near corporate hubs and fine dining.", amenities: ["24/7 Security", "Gym", "Valet Parking"] },
-    { id: 4, title: "Parkside Family Garden Apartment", location: "Uptown", price: 680000, bhk_config: "3 BHK", description: "Sprawling 3-bedroom residence facing Central Park.", amenities: ["Children Play Area", "Private Garden Patio", "Reserved Parking"] },
-    { id: 5, title: "West End Contemporary Waterfront Condo", location: "West End", price: 750000, bhk_config: "3 BHK", description: "Breathtaking waterfront views with oversized terrace, chef's kitchen, and wine cooler.", amenities: ["Marina Access", "Infinity Pool", "Sauna & Steam"] },
-    { id: 6, title: "Silicon Hills Tech Corridor Smart Home", location: "Silicon Hills", price: 820000, bhk_config: "3 BHK", description: "Fully integrated smart home with solar panels and automated lighting.", amenities: ["Smart Home Automation", "Solar Power", "2-Car Garage"] }
-  ];
-
-  return allProps.filter((p) => {
-    if (filters.location && !p.location.toLowerCase().includes(filters.location.toLowerCase())) return false;
-    if (filters.budget_max && p.price > Number(filters.budget_max)) return false;
-    if (filters.bhk && p.bhk_config !== `${filters.bhk} BHK` && p.bhk_config !== filters.bhk) return false;
-    return true;
-  });
 }
 
 export async function sendChatMessage(message, sessionId, callerName, callerPhone) {
-  const res = await fetch(`${API_BASE}/chat`, {
+  return getJson(`${API_BASE}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       session_id: sessionId,
-      message: message,
-      caller_name: callerName || 'Web User',
-      caller_phone: callerPhone || '+15551234567',
+      message,
+      caller_name: callerName || null,
+      caller_phone: callerPhone || null,
     }),
   });
-  if (!res.ok) throw new Error('Failed to communicate with agent');
-  return res.json();
 }

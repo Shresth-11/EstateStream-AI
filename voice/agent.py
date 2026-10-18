@@ -18,8 +18,8 @@ class AgentSession:
     def __init__(
         self,
         session_id: str,
-        caller_phone: str = "+15551234567",
-        caller_name: str = "Prospective Buyer",
+        caller_phone: Optional[str] = None,
+        caller_name: Optional[str] = None,
         llm_client: Optional[BaseLLMClient] = None,
     ):
         self.session_id = session_id
@@ -62,8 +62,8 @@ class AgentSession:
                 "escalated": self.escalated,
             }
 
-        # Check for silence indicator
-        if user_text.strip() in ["[silence]", "SILENCE_TIMEOUT"]:
+        # Check for silence indicator (empty transcripts count as silence too)
+        if not user_text or user_text.strip() in ["", "[silence]", "SILENCE_TIMEOUT"]:
             self.silence_count += 1
             if self.silence_count >= 2:
                 self.call_ended = True
@@ -88,13 +88,22 @@ class AgentSession:
 
         while current_iter < max_tool_iterations:
             current_iter += 1
-            response = await self.llm_client.generate_response(
-                messages=self.messages,
-                tools=AGENT_TOOLS_SPEC,
-            )
+            # On the last iteration, withhold tools so the model must answer in words.
+            offer_tools = AGENT_TOOLS_SPEC if current_iter < max_tool_iterations else None
+            try:
+                response = await self.llm_client.generate_response(
+                    messages=self.messages,
+                    tools=offer_tools,
+                )
+            except Exception as e:
+                # A provider error (429, 5xx, bad key, timeout) must not kill the call.
+                logger.error(f"LLM call failed in session {self.session_id}: {e}", exc_info=True)
+                final_reply = "Sorry, I had a brief connection hiccup on my end. Could you say that again?"
+                self.messages.append({"role": "assistant", "content": final_reply})
+                break
 
             # If tool calls were generated
-            if response.tool_calls:
+            if response.tool_calls and offer_tools is not None:
                 # Append assistant tool invocation message to messages
                 assistant_msg: Dict[str, Any] = {
                     "role": "assistant",
@@ -114,7 +123,15 @@ class AgentSession:
                 self.messages.append(assistant_msg)
 
                 for tc in response.tool_calls:
-                    result_content = await self._execute_tool(tc, db)
+                    try:
+                        result_content = await self._execute_tool(tc, db)
+                    except Exception as e:
+                        logger.error(f"Tool {tc.name} failed: {e}", exc_info=True)
+                        try:
+                            await db.rollback()
+                        except Exception:
+                            pass
+                        result_content = {"error": f"{tc.name} failed. Apologise briefly and continue without it."}
                     tools_executed.append({
                         "name": tc.name,
                         "arguments": tc.arguments,
@@ -126,15 +143,23 @@ class AgentSession:
                         "role": "tool",
                         "tool_call_id": tc.id,
                         "name": tc.name,
-                        "content": json.dumps(result_content),
+                        "content": json.dumps(result_content, default=str),
                     })
                 # Loop again so LLM can synthesize tool results into conversational speech
                 continue
 
             # Assistant plain text response
-            final_reply = response.content or ""
-            self.messages.append({"role": "assistant", "content": final_reply})
+            final_reply = (response.content or "").strip()
             break
+
+        if not final_reply:
+            final_reply = (
+                "I've passed your request to a senior broker. Thank you for calling, goodbye!"
+                if self.escalated
+                else "Could you tell me a bit more about the area and budget you have in mind?"
+            )
+        if not self.messages or self.messages[-1].get("content") != final_reply:
+            self.messages.append({"role": "assistant", "content": final_reply})
 
         # Check for farewell or closing indicators
         if any(term in final_reply.lower() for term in ["have a wonderful day", "have a great day", "goodbye", "transferring you"]):
@@ -166,10 +191,19 @@ class AgentSession:
             return props
 
         elif name == "save_lead":
+            # Phone resolution: stated by caller > known caller ID > the lead already
+            # created in this session > a per-session placeholder. The old fixed
+            # default phone made every browser call overwrite the same lead row.
+            phone = (
+                args.get("phone")
+                or self.caller_phone
+                or (self.captured_lead.phone if self.captured_lead else None)
+                or f"unknown-{self.session_id}"
+            )
             lead = await save_lead(
                 db=db,
-                name=args.get("name") or self.caller_name,
-                phone=args.get("phone") or self.caller_phone,
+                name=args.get("name") or self.caller_name or "Prospective Buyer",
+                phone=phone,
                 budget_min=args.get("budget_min"),
                 budget_max=args.get("budget_max"),
                 preferred_location=args.get("preferred_location"),

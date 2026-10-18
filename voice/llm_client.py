@@ -40,16 +40,23 @@ class OpenAILLMClient(BaseLLMClient):
         from openai import AsyncOpenAI
         self.api_key = api_key or settings.OPENAI_API_KEY
         self.model = model or settings.OPENAI_MODEL
-        self.client = AsyncOpenAI(api_key=self.api_key)
+        # Bounded latency: a voice caller can't wait on default 10-minute timeouts.
+        self.client = AsyncOpenAI(api_key=self.api_key, timeout=20.0, max_retries=2)
 
     async def generate_response(
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
+        # Internal history tags tool results with "name" (the mock uses it);
+        # strip it so the payload matches the Chat Completions tool-message schema.
+        clean_messages = [
+            {k: v for k, v in m.items() if not (m.get("role") == "tool" and k == "name")}
+            for m in messages
+        ]
         kwargs: Dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": clean_messages,
             "temperature": 0.3,
         }
         if tools:
@@ -136,7 +143,7 @@ class MockLLMClient(BaseLLMClient):
             )
 
         # Guardrail 1: Demanding human broker or escalation
-        if any(w in msg_lower for w in ["human", "real person", "manager", "representative", "broker", "agent right now"]):
+        if any(w in msg_lower for w in ESCALATION_PHRASES):
             return LLMResponse(
                 tool_calls=[
                     ToolCall(
@@ -160,14 +167,14 @@ class MockLLMClient(BaseLLMClient):
                 content="Haha, that's outside my domain! I'm focused on finding your dream home at EstateStream AI. What location or property style are you searching for?"
             )
 
-        # Guardrail 4: Impatient caller ("cut the fluff", "hurry up", "quick")
-        # Only ask for parameters if user didn't already provide them
-        has_bhk = re.search(r"(\d+)\s*(bhk|bed|bedroom)", msg_lower)
-        has_budget = re.search(r"(\$?\d+[\d,]*\s*(k|thousand|million|m)?|\d+\s*(lakh|cr))", msg_lower)
-        locations = ["downtown", "midtown", "uptown", "west end", "brooklyn heights", "silicon hills", "suburban oaks", "marina bay", "sunnyvale", "cambridge"]
-        found_loc = next((loc for loc in locations if loc in msg_lower), None)
+        bhk_val = parse_bhk(msg_lower)
+        budget_val = parse_budget(msg_lower)
+        found_loc = next((loc for loc in KNOWN_LOCATIONS if loc in msg_lower), None)
+        name_val = parse_name(last_user_msg)
+        phone_val = parse_phone(last_user_msg)
 
-        if any(w in msg_lower for w in ["fluff", "hurry", "quick", "cut to the chase", "no small talk"]) and not (has_bhk or has_budget or found_loc):
+        # Guardrail 4: Impatient caller with no usable criteria
+        if any(w in msg_lower for w in ["fluff", "hurry", "quick", "cut to the chase", "no small talk"]) and not (bhk_val or budget_val or found_loc):
             return LLMResponse(
                 content="Got it, straight to business! Tell me your target location, budget, and bedroom count, and I'll pull available listings immediately."
             )
@@ -184,72 +191,32 @@ class MockLLMClient(BaseLLMClient):
                 content="I apologize if I caused any frustration. I'm here to help you find real estate listings, or I can connect you with our client relations team."
             )
 
-        # Tool Call Trigger: Search Properties if user mentions location, budget, or BHK
-        if has_bhk or has_budget or found_loc or "show me" in msg_lower or "looking for" in msg_lower or "what" in msg_lower:
-            budget_val = 800000.0
-            if "50" in msg_lower or "50k" in msg_lower:
-                budget_val = 50000.0
-            elif "100" in msg_lower or "100k" in msg_lower:
-                budget_val = 100000.0
-            elif "300" in msg_lower or "280" in msg_lower:
-                budget_val = 300000.0
-            elif "450" in msg_lower or "400" in msg_lower:
-                budget_val = 450000.0
-            elif "600" in msg_lower:
-                budget_val = 600000.0
-            elif "700" in msg_lower or "750" in msg_lower:
-                budget_val = 750000.0
-            elif "million" in msg_lower or "1.5" in msg_lower:
-                budget_val = 1500000.0
+        # Lead capture takes priority over search: a phone number is not a budget.
+        if name_val or phone_val or any(w in msg_lower for w in ["yes please", "save my", "contact me", "call me"]):
+            prefs = _collect_preferences(messages)
+            args = {k: v for k, v in {
+                "name": name_val,
+                "phone": phone_val,
+                "budget_max": prefs.get("budget_max"),
+                "preferred_location": prefs.get("location"),
+                "bhk_preference": prefs.get("bhk"),
+                "timeline": parse_timeline(msg_lower) or prefs.get("timeline"),
+            }.items() if v}
+            if not args.get("name"):
+                args["name"] = "Prospective Buyer"
+            return LLMResponse(tool_calls=[ToolCall(id="call_mock_save", name="save_lead", arguments=args)])
 
-            bhk_val = "3 BHK"
-            if "1" in msg_lower:
-                bhk_val = "1 BHK"
-            elif "2" in msg_lower:
-                bhk_val = "2 BHK"
-            elif "4" in msg_lower:
-                bhk_val = "4 BHK"
-            elif "5" in msg_lower:
-                bhk_val = "5 BHK"
-
-            loc_val = found_loc.title() if found_loc else "Downtown"
-            if "moon" in msg_lower:
-                loc_val = "Moon"
-
-            return LLMResponse(
-                tool_calls=[
-                    ToolCall(
-                        id="call_mock_search",
-                        name="search_properties",
-                        arguments={
-                            "location": loc_val,
-                            "budget_max": budget_val,
-                            "bhk": bhk_val,
-                        },
-                    )
-                ]
-            )
-
-        # Lead saving trigger: if caller provides name, phone or confirms saving
-        if any(w in msg_lower for w in ["my name is", "yes please", "save", "contact me", "phone", "email", "john", "sarah", "alex"]):
-            return LLMResponse(
-                tool_calls=[
-                    ToolCall(
-                        id="call_mock_save",
-                        name="save_lead",
-                        arguments={
-                            "name": "Sarah Connor" if "sarah" in msg_lower else "John Doe",
-                            "phone": "+15559876543",
-                            "budget_min": 500000.0,
-                            "budget_max": 800000.0,
-                            "preferred_location": "Downtown",
-                            "bhk_preference": "3 BHK",
-                            "timeline": "3 months",
-                            "financing_status": "Pre-approved",
-                        },
-                    )
-                ]
-            )
+        # Search when the caller gives at least one concrete criterion.
+        absurd_loc = "Moon" if "moon" in msg_lower else None
+        if bhk_val or budget_val or found_loc or absurd_loc:
+            args = {}
+            if found_loc or absurd_loc:
+                args["location"] = absurd_loc or found_loc.title()
+            if budget_val:
+                args["budget_max"] = budget_val
+            if bhk_val:
+                args["bhk"] = bhk_val
+            return LLMResponse(tool_calls=[ToolCall(id="call_mock_search", name="search_properties", arguments=args)])
 
         # Standard conversational opening / fallback
         if not messages or len(messages) <= 2:
@@ -260,6 +227,89 @@ class MockLLMClient(BaseLLMClient):
         return LLMResponse(
             content="That sounds great! What price range are you comfortable with, and when are you looking to make a move?"
         )
+
+
+# --- Mock parsing helpers (offline mode only) ---
+
+ESCALATION_PHRASES = [
+    "human", "real person", "manager", "representative", "speak to a broker",
+    "talk to a broker", "human broker", "agent right now", "speak to someone", "talk to someone",
+]
+
+KNOWN_LOCATIONS = [
+    "downtown", "midtown", "uptown", "west end", "brooklyn heights", "silicon hills", "suburban oaks",
+    "marina bay", "sunnyvale", "cambridge", "financial district", "lakeside", "old town", "riverfront",
+]
+
+_WORD_NUMS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
+
+
+def parse_bhk(text: str) -> Optional[str]:
+    m = re.search(r"\b(\d|one|two|three|four|five|six)\s*-?\s*(bhk|bed|bedroom|br)\b", text)
+    if not m:
+        return None
+    n = m.group(1)
+    n = _WORD_NUMS.get(n, n)
+    return f"{n} BHK"
+
+
+def parse_budget(text: str) -> Optional[float]:
+    """Parses '$450k', '800,000', '$1.5 million', '1.2m'. Ignores BHK counts and phone numbers."""
+    t = re.sub(r"\+?\d[\d\s\-().]{8,}\d", " ", text)  # drop phone numbers first
+    t = t.replace(",", "")
+    m = re.search(r"\$?\s*(\d+(?:\.\d+)?)\s*(million|mil|m|k|thousand)\b", t)
+    if m:
+        val = float(m.group(1))
+        unit = m.group(2)
+        return val * (1_000_000 if unit in ("million", "mil", "m") else 1_000)
+    m = re.search(r"\$\s*(\d{4,9})(?!\d)", t) or re.search(r"(?<![\d+])(\d{5,7})(?!\d)", t)
+    if m:
+        return float(m.group(1))
+    return None
+
+
+def parse_phone(text: str) -> Optional[str]:
+    m = re.search(r"(\+?\d[\d\s\-().]{8,}\d)", text)
+    if not m:
+        return None
+    digits = re.sub(r"\D", "", m.group(1))
+    return ("+" if m.group(1).startswith("+") else "") + digits if len(digits) >= 10 else None
+
+
+def parse_name(text: str) -> Optional[str]:
+    m = re.search(r"(?:my name is|my name's|this is|i am|i'm)\s+([A-Za-z]+(?:\s+[A-Z][a-z]+)?)", text, re.IGNORECASE)
+    if not m:
+        return None
+    name = m.group(1).strip()
+    stop = {"looking", "interested", "not", "a", "an", "just", "calling", "here", "in", "searching",
+            "planning", "thinking", "trying", "after", "from", "still", "the", "ready", "buying", "moving"}
+    if name.split()[0].lower() in stop:
+        return None
+    # Drop a trailing non-name word captured by the optional second group (e.g. "Priya and")
+    parts = [p for p in name.split() if p.lower() not in stop and p.lower() not in {"and", "my", "on", "at"}]
+    name = " ".join(parts)
+    if not name:
+        return None
+    return " ".join(p.capitalize() for p in name.split())
+
+
+def parse_timeline(text: str) -> Optional[str]:
+    m = re.search(r"(immediately|asap|right away|next year|this year|\d+\s*(?:months?|weeks?|years?))", text)
+    return m.group(1) if m else None
+
+
+def _collect_preferences(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Pulls the most recent search criteria the caller mentioned earlier in the call."""
+    prefs: Dict[str, Any] = {}
+    for m in messages:
+        if m.get("role") != "user":
+            continue
+        t = (m.get("content") or "").lower()
+        prefs["bhk"] = parse_bhk(t) or prefs.get("bhk")
+        prefs["budget_max"] = parse_budget(t) or prefs.get("budget_max")
+        prefs["location"] = next((l.title() for l in KNOWN_LOCATIONS if l in t), None) or prefs.get("location")
+        prefs["timeline"] = parse_timeline(t) or prefs.get("timeline")
+    return prefs
 
 
 def get_llm_client() -> BaseLLMClient:

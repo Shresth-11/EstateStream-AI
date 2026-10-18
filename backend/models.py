@@ -29,6 +29,14 @@ class ConversationOutcome(str, enum.Enum):
     DROPPED = "dropped"
     ESCALATED = "escalated"
     INCOMPLETE = "incomplete"
+    NOT_INTERESTED = "not_interested"
+
+
+def normalize_outcome(value) -> str:
+    """Coerce any free-form outcome (e.g. from an LLM summary) into a valid enum value."""
+    v = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    valid = {o.value for o in ConversationOutcome}
+    return v if v in valid else ConversationOutcome.INCOMPLETE.value
 
 
 class Property(Base):

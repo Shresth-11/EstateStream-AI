@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     # Cartesia TTS Fallback
     CARTESIA_API_KEY: str = ""
     CARTESIA_VOICE_ID: str = "a0e998e3-18a7-4fc6-baa7-0e6205ca8337"
+    CARTESIA_MODEL: str = "sonic-2"
+    CARTESIA_VERSION: str = "2025-04-16"
+
+    # Phone pipeline (Twilio Media Streams / phone simulator)
+    STT_ENGINE: str = "auto"          # auto | deepgram | whisper
+    TTS_ENGINE: str = "auto"          # auto | elevenlabs | piper
+    WHISPER_MODEL: str = "base.en"    # tiny.en is faster, small.en more accurate
+    PIPER_VOICE: str = "en_US-lessac-medium"
+    MODELS_DIR: str = "./models"
+    PHONE_PRELOAD_MODELS: bool = True  # load STT/TTS at startup instead of on first call
+    PHONE_SILENCE_TIMEOUT_S: float = 8.0
+    PHONE_BARGE_IN_MS: int = 300       # caller must talk this long over Riya to interrupt her
 
     # Twilio Telephony
     TWILIO_ACCOUNT_SID: str = ""

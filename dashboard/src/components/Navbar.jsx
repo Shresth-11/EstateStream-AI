@@ -86,6 +86,17 @@ export default function Navbar({ activeTab, setActiveTab, onOpenVoiceTester }) {
             <Mic className="w-3.5 h-3.5 text-[#6b635b]" />
             <span>Mic Window</span>
           </a>
+
+          <a
+            href={`${(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')}/phone-sim`}
+            target="_blank"
+            rel="noreferrer"
+            title="Server-side phone pipeline over the Twilio Media Streams protocol"
+            className="hidden md:flex items-center gap-1.5 px-3 py-2.5 bg-[#191512] hover:bg-black text-white text-xs font-semibold rounded-xl transition-all shadow-sm"
+          >
+            <PhoneCall className="w-3.5 h-3.5" />
+            <span>Phone Call</span>
+          </a>
         </div>
       </div>
     </header>

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:16-alpine
@@ -23,6 +21,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        LOCAL_VOICE: "true"   # free Whisper + Piper for the phone pipeline
     container_name: real_estate_voice_agent
     restart: unless-stopped
     depends_on:
@@ -46,9 +46,13 @@ services:
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
       - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8000}
+    volumes:
+      - voice_models:/app/models   # keep downloaded speech models across restarts
     env_file:
       - .env
 
 volumes:
   postgres_data:
+    driver: local
+  voice_models:
     driver: local

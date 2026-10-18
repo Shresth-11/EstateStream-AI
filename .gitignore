@@ -45,3 +45,6 @@ Thumbs.db
 
 # Documents and Binaries
 *.pdf
+
+# Downloaded speech models (phone pipeline)
+models/

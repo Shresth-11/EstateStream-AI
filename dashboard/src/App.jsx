@@ -15,14 +15,17 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
   const [isVoiceTesterOpen, setIsVoiceTesterOpen] = useState(false);
+  const [backendError, setBackendError] = useState(null);
 
   const loadLeads = async () => {
     try {
       setLoadingLeads(true);
+      setBackendError(null);
       const data = await fetchLeads(filterStatus, searchQuery);
       setLeads(data);
     } catch (err) {
       console.error('Failed to load leads:', err);
+      setBackendError('Cannot reach the EstateStream API. Start the backend (uvicorn backend.main:app --port 8000) or set VITE_API_URL.');
     } finally {
       setLoadingLeads(false);
     }
@@ -48,6 +51,11 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {backendError && (
+          <div className="mb-6 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">
+            {backendError}
+          </div>
+        )}
         {activeTab === 'leads' && (
           <LeadList
             leads={leads}

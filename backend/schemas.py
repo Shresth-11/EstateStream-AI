@@ -104,8 +104,8 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     session_id: Optional[str] = "default-session"
     message: str
-    caller_phone: Optional[str] = "+15551234567"
-    caller_name: Optional[str] = "Prospective Buyer"
+    caller_phone: Optional[str] = None
+    caller_name: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
